@@ -171,26 +171,25 @@ def display_kpi_cards(allocated_budget: float, pathways: Dict[str, pd.DataFrame]
         )
     
     with col2:
-        # Find overshoot year across all pathways
-        overshoot_year = None
-        for pathway_name, pathway_df in pathways.items():
-            generator = PathwayGenerator(st.session_state.current_emissions, allocated_budget)
-            summary = generator.get_pathway_summary(pathway_df)
-            if summary['overshoot_year'] is not None:
-                overshoot_year = summary['overshoot_year']
-                break
-        
-        if overshoot_year:
+        # Show average budget utilization across all pathways
+        if pathways:
+            total_utilizations = []
+            for pathway_df in pathways.values():
+                generator = PathwayGenerator(st.session_state.current_emissions, allocated_budget)
+                summary = generator.get_pathway_summary(pathway_df)
+                total_utilizations.append(summary['budget_utilization_pct'])
+            
+            avg_utilization = sum(total_utilizations) / len(total_utilizations)
             st.metric(
-                "Overshoot Year",
-                str(overshoot_year),
-                help="Year when budget is exceeded"
+                "Budget Utilization",
+                f"{avg_utilization:.1f}%",
+                help="Average budget utilization across pathways"
             )
         else:
             st.metric(
-                "Overshoot Year",
-                "None",
-                help="No budget overshoot detected"
+                "Budget Utilization",
+                "N/A",
+                help="No pathways available"
             )
     
     with col3:
@@ -378,8 +377,7 @@ def main():
                         with col2:
                             st.metric("Budget Utilization", f"{summary['budget_utilization_pct']:.1f}%")
                             st.metric("Peak-to-Final Reduction", f"{summary['peak_to_final_reduction_pct']:.1f}%")
-                            if summary['overshoot_year']:
-                                st.metric("Overshoot Year", summary['overshoot_year'])
+                            st.metric("2035 Reduction", f"{summary['reduction_2023_to_2035_pct']:.1f}%")
                 
                 with tab3:
                     # Download panel
