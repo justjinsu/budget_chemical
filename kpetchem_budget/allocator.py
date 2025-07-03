@@ -225,7 +225,11 @@ class BudgetAllocator:
         for method in methods:
             try:
                 budget = self.allocate_budget(method, temp, probability, approach, period)
-                share = self.korean_shares.get(method, 0.0)
+                # Map method to correct share key
+                if method == 'iea_sector':
+                    share = self.korean_shares.get('production', 0.0)
+                else:
+                    share = self.korean_shares.get(method, 0.0)
                 
                 results.append({
                     'method': method,

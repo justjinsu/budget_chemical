@@ -5,7 +5,13 @@ This package allocates global carbon budgets to the Korean petrochemical sector 
 ## Quickstart
 
 ```bash
+# Install dependencies
 pip install streamlit pandas numpy matplotlib scipy
+
+# Option 1: Use launcher script
+python run_app.py
+
+# Option 2: Run directly with streamlit
 streamlit run app.py
 ```
 

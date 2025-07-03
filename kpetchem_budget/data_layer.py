@@ -10,7 +10,6 @@ import numpy as np
 from functools import lru_cache
 from typing import Optional, Dict, Any
 import os
-import requests
 from pathlib import Path
 
 
@@ -35,28 +34,35 @@ def load_global_budget() -> pd.DataFrame:
     >>> budget_df.columns.tolist()
     ['temp', 'probability', 'approach', 'period', 'budget_gt']
     """
+    # Try to load from parent directory's data folder
+    current_dir = Path(__file__).parent
+    budget_path = current_dir.parent / "data" / "globalbudget.csv"
+    
+    if not budget_path.exists():
+        # Create dummy data if file doesn't exist
+        data = {
+            'temp': [1.5, 1.5, 1.5, 2.0, 2.0, 2.0],
+            'probability': [0.17, 0.5, 0.83, 0.17, 0.5, 0.83],
+            'approach': ['GDP', 'GDP', 'GDP', 'GDP', 'GDP', 'GDP'],
+            'period': [2023, 2023, 2023, 2023, 2023, 2023],
+            'budget_gt': [200, 400, 600, 800, 1000, 1200]
+        }
+        return pd.DataFrame(data)
+    
     try:
-        # Try to load from parent directory's data folder
-        current_dir = Path(__file__).parent
-        budget_path = current_dir.parent / "data" / "globalbudget.csv"
-        
-        if not budget_path.exists():
-            # Create dummy data if file doesn't exist
-            data = {
-                'temp': [1.5, 1.5, 1.5, 2.0, 2.0, 2.0],
-                'probability': [0.17, 0.5, 0.83, 0.17, 0.5, 0.83],
-                'approach': ['GDP', 'GDP', 'GDP', 'GDP', 'GDP', 'GDP'],
-                'period': [2023, 2023, 2023, 2023, 2023, 2023],
-                'budget_gt': [200, 400, 600, 800, 1000, 1200]
-            }
-            return pd.DataFrame(data)
-        
         df = pd.read_csv(budget_path)
         
-        # Validate required columns
-        required_cols = ['temp', 'probability', 'approach', 'period', 'budget_gt']
-        if not all(col in df.columns for col in required_cols):
-            raise DataLoadError(f"Missing required columns: {required_cols}")
+        # Validate required columns - check for actual file format
+        if 'temp' in df.columns and 'probability' in df.columns and 'budget' in df.columns:
+            # Original format - add missing columns with defaults
+            df = df.rename(columns={'budget': 'budget_gt'})
+            df['approach'] = 'GDP'  # Default approach
+            df['period'] = 2023     # Default period
+        else:
+            # Expected format
+            required_cols = ['temp', 'probability', 'approach', 'period', 'budget_gt']
+            if not all(col in df.columns for col in required_cols):
+                raise DataLoadError(f"Missing required columns: {required_cols}")
             
         return df
         
