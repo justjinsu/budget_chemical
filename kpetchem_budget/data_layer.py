@@ -7,10 +7,9 @@ IEA sector data, and Korean industry production data.
 
 import pandas as pd
 import numpy as np
+import os
 from functools import lru_cache
 from typing import Optional, Dict, Any
-import os
-from pathlib import Path
 
 
 class DataLoadError(Exception):
@@ -35,10 +34,11 @@ def load_global_budget() -> pd.DataFrame:
     ['temp', 'probability', 'approach', 'period', 'budget_gt']
     """
     # Try to load from parent directory's data folder
-    current_dir = Path(__file__).parent
-    budget_path = current_dir.parent / "data" / "globalbudget.csv"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    budget_path = os.path.join(parent_dir, "data", "globalbudget.csv")
     
-    if not budget_path.exists():
+    if not os.path.exists(budget_path):
         # Create dummy data if file doesn't exist
         data = {
             'temp': [1.5, 1.5, 1.5, 2.0, 2.0, 2.0],
@@ -131,10 +131,10 @@ def load_demo_industry_data(file_path: Optional[str] = None) -> pd.DataFrame:
             return df
         else:
             # Return default demo data
-            current_dir = Path(__file__).parent
-            demo_path = current_dir / "sample_data" / "kpetchem_demo.csv"
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            demo_path = os.path.join(current_dir, "sample_data", "kpetchem_demo.csv")
             
-            if demo_path.exists():
+            if os.path.exists(demo_path):
                 return pd.read_csv(demo_path)
             else:
                 # Create default demo data

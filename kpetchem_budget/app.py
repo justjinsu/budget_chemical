@@ -13,18 +13,35 @@ import matplotlib.dates as mdates
 from datetime import datetime
 import io
 import base64
+import sys
+import os
 from typing import Optional, Dict, Any
 
-import sys
-from pathlib import Path
+# Handle imports for both local and Streamlit Cloud environments
+def setup_imports():
+    """Setup imports to work in different environments."""
+    # Add current directory to path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    
+    # Also try parent directory for package structure
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
 
-# Add current directory to Python path for imports
-current_dir = Path(__file__).parent
-sys.path.insert(0, str(current_dir))
+# Setup imports
+setup_imports()
 
-from data_layer import load_global_budget, load_demo_industry_data
-from allocator import BudgetAllocator
-from pathway import PathwayGenerator, BudgetOverflowError
+# Import our modules
+try:
+    from data_layer import load_global_budget, load_demo_industry_data
+    from allocator import BudgetAllocator
+    from pathway import PathwayGenerator, BudgetOverflowError
+except ImportError as e:
+    st.error(f"Import error: {e}")
+    st.error("Please ensure all required files are in the same directory as app.py")
+    st.stop()
 
 
 def initialize_session_state():
