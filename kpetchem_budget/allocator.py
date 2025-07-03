@@ -8,12 +8,22 @@ of the global carbon budget for the petrochemical industry.
 import pandas as pd
 import numpy as np
 from typing import Dict, Union, Optional
-from .data_layer import (
-    load_global_budget, 
-    load_iea_sector_budget, 
-    load_demo_industry_data,
-    get_korean_shares
-)
+try:
+    # Try relative import first (for package usage)
+    from .data_layer import (
+        load_global_budget, 
+        load_iea_sector_budget, 
+        load_demo_industry_data,
+        get_korean_shares
+    )
+except ImportError:
+    # Fall back to direct import (for Streamlit)
+    from data_layer import (
+        load_global_budget, 
+        load_iea_sector_budget, 
+        load_demo_industry_data,
+        get_korean_shares
+    )
 
 
 class BudgetAllocator:

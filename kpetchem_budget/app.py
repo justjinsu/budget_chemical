@@ -15,9 +15,16 @@ import io
 import base64
 from typing import Optional, Dict, Any
 
-from .data_layer import load_global_budget, load_demo_industry_data
-from .allocator import BudgetAllocator
-from .pathway import PathwayGenerator, BudgetOverflowError
+import sys
+from pathlib import Path
+
+# Add current directory to Python path for imports
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
+from data_layer import load_global_budget, load_demo_industry_data
+from allocator import BudgetAllocator
+from pathway import PathwayGenerator, BudgetOverflowError
 
 
 def initialize_session_state():
