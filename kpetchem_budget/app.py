@@ -120,7 +120,7 @@ def calculate_budget_allocation():
     method_map = {
         'Population': 'population',
         'GDP': 'gdp', 
-        'Historical GHG': 'historical_ghg',
+        'Historical GHG': 'national_ghg',  # Fixed mapping
         'IEA Sector': 'iea_sector'
     }
     

@@ -17,7 +17,10 @@ import warnings
 import gzip
 import pickle
 
-from .simulator import SimulationResult
+try:
+    from .simulator import SimulationResult
+except ImportError:
+    from simulator import SimulationResult
 
 
 @dataclass

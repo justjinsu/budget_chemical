@@ -12,7 +12,10 @@ from typing import Optional, Dict, Union
 from scipy import interpolate
 import warnings
 
-from .data_layer import get_timeline_years
+try:
+    from .data_layer import get_timeline_years
+except ImportError:
+    from data_layer import get_timeline_years
 
 
 class BudgetOverflowError(Exception):

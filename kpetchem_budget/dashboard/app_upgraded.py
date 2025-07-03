@@ -35,20 +35,35 @@ def setup_imports():
 
 setup_imports()
 
+# Import modules with robust error handling
 try:
+    # Try importing from parent directory first
+    import sys
+    import os
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    
     from data_layer import load_global_budget, load_demo_industry_data, get_timeline_years
     from parameter_space import ParameterGrid, MonteCarloSampler, get_budget_line_params
     from pathway import PathwayGenerator, BudgetOverflowError, mark_milestones, batch_generate_pathways
     from simulator import HighPerformanceSimulator, VectorizedBudgetAllocator
     from datastore import SimulationDataStore, PercentileResult, quick_percentile_analysis
-except ImportError:
-    # Fallback for direct execution
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from data_layer import load_global_budget, load_demo_industry_data, get_timeline_years
-    from parameter_space import ParameterGrid, MonteCarloSampler, get_budget_line_params
-    from pathway import PathwayGenerator, BudgetOverflowError, mark_milestones, batch_generate_pathways
-    from simulator import HighPerformanceSimulator, VectorizedBudgetAllocator
-    from datastore import SimulationDataStore, PercentileResult, quick_percentile_analysis
+except ImportError as e:
+    st.error(f"Import error: {e}")
+    st.error("Please ensure all required modules are available. Run from the main kpetchem_budget directory.")
+    st.info("Expected file structure:")
+    st.code("""
+kpetchem_budget/
+├── data_layer.py
+├── parameter_space.py  
+├── pathway.py
+├── simulator.py
+├── datastore.py
+└── dashboard/
+    └── app_upgraded.py (this file)
+    """)
+    st.stop()
 
 
 # Configure Streamlit page

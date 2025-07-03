@@ -14,9 +14,14 @@ from dataclasses import dataclass
 import warnings
 import multiprocessing as mp
 
-from .parameter_space import ParameterGrid, MonteCarloSampler, ParameterCase, MonteCarloSample, get_budget_line_params
-from .data_layer import load_global_budget, load_iea_sector_budget, get_korean_shares, get_timeline_years
-from .pathway import PathwayGenerator, BudgetOverflowError
+try:
+    from .parameter_space import ParameterGrid, MonteCarloSampler, ParameterCase, MonteCarloSample, get_budget_line_params
+    from .data_layer import load_global_budget, load_iea_sector_budget, get_korean_shares, get_timeline_years
+    from .pathway import PathwayGenerator, BudgetOverflowError
+except ImportError:
+    from parameter_space import ParameterGrid, MonteCarloSampler, ParameterCase, MonteCarloSample, get_budget_line_params
+    from data_layer import load_global_budget, load_iea_sector_budget, get_korean_shares, get_timeline_years
+    from pathway import PathwayGenerator, BudgetOverflowError
 
 
 @dataclass
