@@ -1,0 +1,19 @@
+global_budget:         # 1.5 °C ”ì ”
+  low:  4.5e11        # 450 Gt
+  mid:  5.0e11        # 500 Gt
+  high: 5.5e11        # 550 Gt
+
+user_weights:         # iÄ 1.0
+  responsibility: 0.30
+  capability:     0.40
+  equality:       0.30
+
+industry_fraction:   0.37   # h °Åt \m0œÐ (ÀX” «
+petrochem_fraction:  0.10   #  TYt °Å ´€Ð (ÀX” «
+
+korea_gdp_share:
+  2024: 0.018
+  2050: 0.015
+
+n_draws: 3000
+seed:    123
