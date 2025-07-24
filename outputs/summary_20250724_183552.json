@@ -1,0 +1,97 @@
+{
+  "timestamp": "20250724_183552",
+  "configuration": {
+    "n_draws": 3000,
+    "seed": 123,
+    "curve_type": "log",
+    "global_budget": {
+      "low": 450000000000.0,
+      "mid": 500000000000.0,
+      "high": 550000000000.0
+    },
+    "user_weights": {
+      "responsibility": 0.3,
+      "capability": 0.4,
+      "equality": 0.3
+    },
+    "uncertainty": {
+      "responsibility": {
+        "low": 0.009,
+        "mid": 0.011,
+        "high": 0.013
+      },
+      "capability": {
+        "mu": 0.017,
+        "sd_pct": 0.05
+      },
+      "equality": {
+        "mu": 0.0067,
+        "sd_pct": 0.03
+      }
+    },
+    "industry_fraction": 0.37,
+    "petrochem_fraction": 0.1,
+    "output_dir": "outputs"
+  },
+  "model_parameters": {
+    "base_emissions_industry_tCO2": 185000000.0,
+    "base_emissions_petrochem_tCO2": 50000000.0,
+    "simulation_years": [
+      2024,
+      2050
+    ],
+    "transition_year": 2035
+  },
+  "industry_sector": {
+    "mean_budget": 2237471140.0940332,
+    "p05_budget": 2037263012.069737,
+    "p95_budget": 2443067472.4768796,
+    "overshoot_prob": 0.0,
+    "mean_overshoot": 0.0,
+    "median_exhaust_year": 2049.0,
+    "cumulative_emissions": {
+      "mean": 2199093025.436829,
+      "p05": 2007373682.8800538,
+      "p50": 2202156898.607643,
+      "p75": 2284698712.1792393,
+      "p95": 2377234378.8267946
+    }
+  },
+  "petrochemical_sector": {
+    "mean_budget": 223747114.00940332,
+    "p05_budget": 203726301.2069737,
+    "p95_budget": 244306747.247688,
+    "overshoot_prob": 1.0,
+    "mean_overshoot": 23364798.425275765,
+    "median_exhaust_year": 2036.0,
+    "cumulative_emissions": {
+      "mean": 247111912.4346791,
+      "p05": 228027913.494266,
+      "p50": 246766252.55008256,
+      "p75": 255265454.54701194,
+      "p95": 266922966.69693094
+    }
+  },
+  "uncertainty_factors": {
+    "global_budget": {
+      "mean": 499636136394.9143,
+      "std": 20210255643.11274,
+      "range": [
+        450965349100.76263,
+        549143656520.4516
+      ]
+    },
+    "responsibility_factor": {
+      "mean": 0.01097984685109745,
+      "std": 0.0008101741824271199
+    },
+    "capability_factor": {
+      "mean": 0.01699260559060599,
+      "std": 0.000840815422113047
+    },
+    "equality_factor": {
+      "mean": 0.006699363037618104,
+      "std": 0.00020387409474701063
+    }
+  }
+}

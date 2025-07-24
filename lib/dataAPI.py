@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import openpyxl
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -142,3 +143,19 @@ def clean_and_extract(file_path, skip = 8):
     df_long['year'] = df_long['year'].astype(int)
 
     return df_long
+
+
+def read_edgar_data(data_path: Path) -> pd.DataFrame:
+    """
+    Read EDGAR CO2 data from Excel file
+    
+    :param data_path: Path to data directory
+    :return: DataFrame with country-level CO2 emissions data
+    """
+    edgar_file = data_path / "IEA_EDGAR_CO2_1970_2022.xlsx"
+    if not edgar_file.exists():
+        raise FileNotFoundError(f"EDGAR data file not found: {edgar_file}")
+    
+    # Use the existing clean_and_extract function
+    df = clean_and_extract(edgar_file)
+    return df

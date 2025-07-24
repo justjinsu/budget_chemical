@@ -1,19 +1,25 @@
-global_budget:         # 1.5 °C ”ì ”
-  low:  4.5e11        # 450 Gt
-  mid:  5.0e11        # 500 Gt
-  high: 5.5e11        # 550 Gt
-
-user_weights:         # iÄ 1.0
-  responsibility: 0.30
-  capability:     0.40
-  equality:       0.30
-
-industry_fraction:   0.37   # h °Åt \m0œÐ (ÀX” «
-petrochem_fraction:  0.10   #  TYt °Å ´€Ð (ÀX” «
-
-korea_gdp_share:
-  2024: 0.018
-  2050: 0.015
-
 n_draws: 3000
-seed:    123
+seed: 123
+curve_type: log
+global_budget: 
+  low: 450000000000.0
+  mid: 500000000000.0
+  high: 550000000000.0
+user_weights: 
+  responsibility: 0.3
+  capability: 0.4
+  equality: 0.3
+uncertainty:
+  responsibility: 
+    low: 0.009
+    mid: 0.011
+    high: 0.013
+  capability: 
+    mu: 0.017
+    sd_pct: 0.05
+  equality: 
+    mu: 0.0067
+    sd_pct: 0.03
+industry_fraction: 0.37
+petrochem_fraction: 0.10
+output_dir: outputs

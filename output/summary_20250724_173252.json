@@ -1,0 +1,38 @@
+{
+  "timestamp": "20250724_173252",
+  "config": {
+    "global_budget": {
+      "low": 450000000000.0,
+      "mid": 500000000000.0,
+      "high": 550000000000.0
+    },
+    "user_weights": {
+      "responsibility": 0.3,
+      "capability": 0.4,
+      "equality": 0.3
+    },
+    "industry_fraction": 0.37,
+    "petrochem_fraction": 0.1,
+    "korea_gdp_share": {
+      "2024": 0.018,
+      "2050": 0.015
+    },
+    "n_draws": 3000,
+    "seed": 123
+  },
+  "base_emission_tCO2": 50000000.0,
+  "n_draws": 3000,
+  "budget_stats": {
+    "mean": 252430208.5544651,
+    "std": 12316587.367573619,
+    "min": 215425639.52835009,
+    "max": 291644023.04779845,
+    "median": 252351398.3750105
+  },
+  "overshoot_stats": {
+    "probability_pct": 100.0,
+    "mean": 47721086.22172355,
+    "std": 11978782.429660043,
+    "max": 84574360.4721956
+  }
+}

@@ -1,9 +1,7 @@
 # model_D_MC/mc_sampler.py
 # -----------------------------------------------------------
-# Monte-Carlo 샘플러 (불확실 변수 3개)
-#   1) 전 지구 잔여 탄소예산  Bglob  : 삼각분포(저·중·고)
-#   2) 형평 가중치 w_r,w_c,w_e       : Dirichlet, 사용자 값 ±2.5 % 흔들림
-#   3) 한국 GDP 비중 S_gdp           : 정규, ±5 % 흔들림
+# Monte-Carlo Sampler for Carbon Budget Allocation Model
+# Implements 5-variable uncertainty sampling with exponential decay
 # -----------------------------------------------------------
 from __future__ import annotations
 from pathlib import Path
@@ -12,55 +10,83 @@ import yaml
 from typing import Dict, Any, Tuple
 
 
-# ---------- YAML 설정 로드 -----------------------------------
-def load_cfg(path: str | Path) -> Dict[str, Any]:
+def load_cfg(path: str | Path = "mc_config.yaml") -> Dict[str, Any]:
+    """Load configuration from YAML file"""
+    # If relative path, make it relative to this script's directory
+    if not Path(path).is_absolute():
+        script_dir = Path(__file__).parent
+        path = script_dir / path
+    
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-# ---------- 샘플러 클래스 ------------------------------------
 class Sampler:
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
         self.rng = np.random.default_rng(cfg.get("seed", 42))
+        
+        # Base user weights
+        self.base_w = np.array([
+            cfg["user_weights"]["responsibility"],
+            cfg["user_weights"]["capability"], 
+            cfg["user_weights"]["equality"]
+        ], dtype=float)
 
-        # 사용자 입력 가중치 (합계 1.0)
-        self.base_w = np.array(
-            [
-                cfg["user_weights"]["responsibility"],
-                cfg["user_weights"]["capability"],
-                cfg["user_weights"]["equality"],
-            ],
-            dtype=float,
-        )
-
-    # 1) 전 지구 잔여 탄소예산
     def _draw_global_budget(self, n: int) -> np.ndarray:
-        a = self.cfg["global_budget"]["low"]
-        m = self.cfg["global_budget"]["mid"]
-        b = self.cfg["global_budget"]["high"]
-        return self.rng.triangular(a, m, b, n)
+        """Sample global carbon budget from triangular distribution"""
+        low = self.cfg["global_budget"]["low"]
+        mid = self.cfg["global_budget"]["mid"] 
+        high = self.cfg["global_budget"]["high"]
+        return self.rng.triangular(low, mid, high, n)
 
-    # 2) 형평 가중치
-    def _draw_weights(self, n: int) -> np.ndarray:
-        eps = self.rng.normal(0.0, 0.025, (n, 3))  # ±2.5 p-p
-        w = np.clip(self.base_w + eps, 0.0, None)
-        w /= w.sum(axis=1, keepdims=True)
-        return w  # shape (n,3)
+    def _draw_responsibility_factor(self, n: int) -> np.ndarray:
+        """Sample responsibility factor δr from triangular distribution"""
+        unc = self.cfg["uncertainty"]["responsibility"]
+        return self.rng.triangular(unc["low"], unc["mid"], unc["high"], n)
 
-    # 3) 한국 GDP 비중
-    def _draw_gdp_share(self, n: int) -> np.ndarray:
-        g0 = self.cfg["korea_gdp_share"][2024]
-        g1 = self.cfg["korea_gdp_share"][2050]
-        mu = 0.5 * (g0 + g1)
-        sigma = 0.05 * mu
+    def _draw_capability_factor(self, n: int) -> np.ndarray:
+        """Sample capability factor δc from normal distribution"""
+        unc = self.cfg["uncertainty"]["capability"]
+        mu = unc["mu"]
+        sigma = mu * unc["sd_pct"]  # 5% of mean
         return self.rng.normal(mu, sigma, n)
 
-    # 통합 샘플
-    def sample_all(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """return (global_budget_vec, weight_matrix, gdp_share_vec)"""
+    def _draw_equality_factor(self, n: int) -> np.ndarray:
+        """Sample equality factor δe from normal distribution"""
+        unc = self.cfg["uncertainty"]["equality"]
+        mu = unc["mu"]
+        sigma = mu * unc["sd_pct"]  # 3% of mean
+        return self.rng.normal(mu, sigma, n)
+
+    def _draw_user_weights(self, n: int) -> np.ndarray:
+        """Sample user weights with ±2.5 p-p clipping and re-normalization"""
+        # Add ±2.5 percentage point noise
+        eps = self.rng.normal(0.0, 0.025, (n, 3))
+        w = self.base_w + eps
+        
+        # Clip to ensure non-negative
+        w = np.clip(w, 0.0, None)
+        
+        # Re-normalize to sum to 1
+        w = w / w.sum(axis=1, keepdims=True)
+        
+        return w
+
+    def sample_all(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Sample all 5 uncertainty variables
+        
+        Returns:
+            Tuple of (global_budget, responsibility_factor, capability_factor, 
+                     equality_factor, user_weights)
+        """
         n = self.cfg["n_draws"]
-        gb = self._draw_global_budget(n)
-        w  = self._draw_weights(n)
-        gdp = self._draw_gdp_share(n)
-        return gb, w, gdp
+        
+        global_budget = self._draw_global_budget(n)
+        responsibility = self._draw_responsibility_factor(n)
+        capability = self._draw_capability_factor(n)
+        equality = self._draw_equality_factor(n)
+        weights = self._draw_user_weights(n)
+        
+        return global_budget, responsibility, capability, equality, weights

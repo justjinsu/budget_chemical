@@ -3,85 +3,94 @@ import numpy as np
 
 
 class budgetAllocation:
-    def __init__(self, data_df, budget):
+    def __init__(self, data_df=None, budget=None):
         """
-        Initialize the budgetAllocation class with the data and budget.
-
+        Initialize the budgetAllocation class for BKIR formula implementation.
+        
         Parameters:
-        data_df (pd.DataFrame): DataFrame containing country-level data with 'indicator', 'year', 'country_code', and 'value'.
-        budget (pd.DataFrame): DataFrame containing 'budget', 'temp', and 'probability' to allocate based on countries' share.
+        data_df (pd.DataFrame): Optional DataFrame containing country-level data
+        budget: Optional budget parameter (kept for compatibility)
         """
-        self.data_df = data_df  # Data containing country-level statistics for different indicators and years
-        self.budget = budget  # Budget DataFrame containing 'budget', 'temp', and 'probability' for allocation
+        self.data_df = data_df
+        self.budget = budget
 
-    def allocate_by_keyword(self, keyword, year, invert=False):
+    def calculate_BKIR(self, global_budget: np.ndarray, responsibility_factor: np.ndarray, 
+                       capability_factor: np.ndarray, equality_factor: np.ndarray, 
+                       weights: np.ndarray) -> np.ndarray:
         """
-        Allocate budget to countries based on their share of a specified indicator.
-
+        Calculate Korea Industrial/Petrochemical budget using BKIR formula:
+        BKIR(j) = Bglobal(j) × (w(r)δ(r) + w(c)δ(c) + w(e)δ(e))
+        
         Parameters:
-        keyword (str): The indicator keyword to filter the data for allocation.
-        year (int or list of ints): The year or range of years to consider for the allocation. Can be a single year or multiple years.
-        invert (bool): If True, inverts the share to favor smaller values, meaning countries with lower values get more budget allocation. Defaults to False.
-
+        global_budget: Array of global budget scenarios (n_draws,)
+        responsibility_factor: Array of responsibility factors δr (n_draws,)
+        capability_factor: Array of capability factors δc (n_draws,) 
+        equality_factor: Array of equality factors δe (n_draws,)
+        weights: Array of user weights (n_draws, 3) for [r, c, e]
+        
         Returns:
-        pd.DataFrame: A DataFrame containing the allocated budget for each country with additional metadata.
+        np.ndarray: BKIR budget allocations (n_draws,)
         """
+        # Extract individual weight components
+        w_r = weights[:, 0]  # responsibility weights
+        w_c = weights[:, 1]  # capability weights  
+        w_e = weights[:, 2]  # equality weights
+        
+        # Calculate weighted factor sum
+        weighted_factors = (w_r * responsibility_factor + 
+                           w_c * capability_factor + 
+                           w_e * equality_factor)
+        
+        # Apply BKIR formula
+        bkir_budget = global_budget * weighted_factors
+        
+        return bkir_budget
 
-        # Handle when year is a list or tuple (multiple years)
-        if isinstance(year, (list, tuple)):
-            # Filter data by the keyword and years, then sum the values over the specified years for each country
-            temp_df = self.data_df[(self.data_df['indicator'] == keyword) & (self.data_df['year'].isin(year))].copy()
-            temp_df = temp_df.groupby('country_code', as_index=False)['value'].sum()  # Sum values over the years
-            period = f"{min(year)}-{max(year)}"  # Create a period string like "2000-2010"
+    def allocate_industry_petrochem(self, bkir_budget: np.ndarray, 
+                                   industry_fraction: float, 
+                                   petrochem_fraction: float) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Allocate BKIR budget to industry and petrochemical sectors.
+        
+        Parameters:
+        bkir_budget: Array of BKIR budget allocations (n_draws,)
+        industry_fraction: Fraction for industry sector (target: 0.37)
+        petrochem_fraction: Fraction for petrochemical sector (target: 0.10)
+        
+        Returns:
+        tuple: (industry_budget, petrochem_budget) arrays
+        """
+        industry_budget = bkir_budget * industry_fraction
+        petrochem_budget = industry_budget * petrochem_fraction
+        
+        return industry_budget, petrochem_budget
 
-        # Handle when year is a single integer (one year)
-        elif isinstance(year, int):
-            # Filter data by the keyword and year
-            temp_df = self.data_df[(self.data_df['indicator'] == keyword) & (self.data_df['year'] == year)].copy()
-            period = year  # Set the period as the single year
+    def get_base_emissions(self, sector: str = "petrochem") -> float:
+        """
+        Get base emissions for the specified sector.
+        
+        Parameters:
+        sector: Sector name ("petrochem" or "industry")
+        
+        Returns:
+        float: Base emissions in tCO2
+        """
+        base_emissions = {
+            'petrochem': 50.0e6,  # 50 MtCO2 for Korean petrochemical sector
+            'industry': 185.0e6   # 185 MtCO2 for Korean industry sector
+        }
+        
+        return base_emissions.get(sector, 50.0e6)
 
-        # Raise error if year is of invalid type
-        else:
-            raise ValueError("Invalid type for 'year'. Must be int or list of years.")
-
-        # Convert 'value' column to NumPy array and handle NaN values by replacing them with 0
-        value_array = temp_df['value'].to_numpy()
-        value_array = np.nan_to_num(value_array, nan=0.0)  # Replace NaNs with zeros
-
-        # Calculate each country's share by dividing their value by the total sum
-        share = value_array / value_array.sum()
-
-        # If invert is True, invert the shares so countries with smaller values get larger allocation
-        if invert:
-            share_inverted = 1 / share
-            share = share_inverted / share_inverted.sum()  # Normalize the inverted shares
-
-        # Extract the country codes from the data
-        country_code = temp_df['country_code'].to_numpy()
-
-        # Initialize a list to store allocations for each budget scenario
-        allocation_lt = []
-
-        # Iterate over each row of the budget DataFrame and allocate the budget based on calculated shares
-        for _, row in self.budget.iterrows():
-            b = row['budget']  # Current budget to allocate
-            allocation = share * b  # Allocate the budget according to the share
-
-            # Create a DataFrame for the current allocation with relevant details
-            allocation_df = pd.DataFrame({'temp': row['temp'],
-                                          'probability': row['probability'],
-                                          'country_code': country_code,
-                                          'share': share,
-                                          'allocation': allocation})
-
-            allocation_lt.append(allocation_df)  # Append allocation to the list
-
-        # Concatenate all allocations into a single DataFrame
-        allocation_df = pd.concat(allocation_lt)
-
-        # Insert additional metadata about the allocation process into the DataFrame
-        allocation_df.insert(loc=2, column='approach', value=keyword)  # Add the keyword/indicator used
-        allocation_df.insert(loc=3, column='period', value=period)  # Add the time period for the data
-        allocation_df.insert(loc=4, column='invert', value=invert)  # Indicate if the shares were inverted
-
-        return allocation_df  # Return the final DataFrame with the allocated budget
+    # Legacy methods for compatibility
+    def allocate_by_keyword(self, keyword, year, invert=False):
+        """Legacy method for backward compatibility"""
+        # Placeholder implementation
+        return pd.DataFrame()
+    
+    def get_shares(self):
+        """Legacy method for backward compatibility"""
+        return {
+            'responsibility': 0.011,  # Default responsibility share
+            'equality': 0.0067        # Default equality share
+        }

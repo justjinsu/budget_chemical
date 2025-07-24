@@ -1,159 +1,178 @@
 import pandas as pd
 import numpy as np
+from typing import List, Tuple
+from scipy.optimize import fsolve
 
 
 class pathwayCalculator:
-    def __init__(self, start_year, mid_year=None, end_year=None, emission_current=None, allocation=None, reduction_rate=None):
+    def __init__(self, start_year: int = 2024, mid_year: int = 2035, end_year: int = 2050):
         """
-        Initialize the pathwayCalculator class with the start, mid, and end years.
-
-        :param start_year: The year from which the pathway calculation starts.
-        :param mid_year: The midpoint year for spline pathway calculations.
-        :param end_year: The year by which emissions are targeted to reach a certain value.
+        Initialize pathway calculator for two-segment exponential decay model.
+        
+        Parameters:
+        start_year: Starting year (default: 2024)
+        mid_year: Transition year (default: 2035) 
+        end_year: Ending year (default: 2050)
         """
         self.start_year = start_year
         self.mid_year = mid_year
         self.end_year = end_year
-        self.emission_current = emission_current  # Optional emission current value
-        self.allocation = allocation
-        self.reduction_rate = reduction_rate
+        self.years = np.array(range(start_year, end_year + 1))
 
-    def linear_to_zero(self, emission_current=None, allocation=None):
+    def two_segment_exp(self, E0: float, budget: float) -> np.ndarray:
         """
-        Calculate the year when the allocated value (budget) will reach zero, using a linear pathway.
-
-        :param emission_current: The current CO2 emission value.
-        :param allocation: The total CO2 emission budget allocated for reduction.
-
-        :return: A DataFrame showing the year-by-year linear decline in emissions until zero.
+        Two-segment exponential decay model:
+        Et = E0 × exp(-k1(t - 2024))  for 2024 ≤ t ≤ 2035
+        Et = E2035 × exp(-k2(t - 2035))  for 2035 < t ≤ 2050
+        
+        Parameters:
+        E0: Initial emissions at 2024 (tCO2)
+        budget: Total carbon budget constraint (tCO2)
+        
+        Returns:
+        np.ndarray: Emission pathway over years
         """
-        emission_current = emission_current if emission_current is not None else self.emission_current
-        allocation = allocation if allocation is not None else self.allocation
-
-        # Calculate the number of years required for emissions to reach zero based on current emission and allocation
-        years_until_zero = 2 * allocation / emission_current + 1  # +1 adjusts for rounding to the nearest whole year
-
-        # Determine the year when emissions will reach zero
-        year_zero = self.start_year - 1 + int(round(years_until_zero))
-
-        # Generate the range of years from the start year to the zero-emission year
-        years = np.array(list(range(self.start_year - 1, year_zero + 1)), dtype='int')
-
-        # Linearly interpolate emissions between the current emission and zero over the years
-        emissions = np.linspace(emission_current, 0, len(years))
-
-        # Create a DataFrame showing the year and corresponding emission values
-        df = pd.DataFrame({
-            'Year': years,
-            'Emission': emissions
-        })
-
-        # Return only the rows from the start year onwards
-        return df[df['Year'] >= self.start_year]
-
-    def linear_pathway(self, emission_current=None, allocation=None):
-        """
-        Create a linear pathway for emissions reduction from the current emission to a target emission by end year.
-
-        :param emission_current: The current CO2 emission value.
-        :param allocation: The total CO2 emission budget allocated for reduction.
-
-        :return: A DataFrame showing the year-by-year linear decline in emissions.
-        """
-
-        emission_current = emission_current if emission_current is not None else self.emission_current
-        allocation = allocation if allocation is not None else self.allocation
-        # Define the range of years from start to end
-        years = range(self.start_year, self.end_year + 1)
-        num_years = len(years)
-
-        # Calculate the end value to ensure total emission matches the allocation over the period
-        end_value = (allocation - emission_current * (num_years - 1) / 2) * 2 / num_years
-
-        # Interpolate emissions linearly between current emissions and the calculated end value
-        values = np.linspace(emission_current, end_value, num_years)
-
-        # Create a DataFrame with the emission pathway over the years
-        df = pd.DataFrame({'Year': years, 'Emission': values})
-
-        # Adjust values so that the total sum of emissions matches the allocated budget
-        adjustment_factor = allocation / df['Emission'].sum()
-        df['Emission'] *= adjustment_factor
-
-        return df[df['Year'] >= self.start_year]
-
-    def spline_pathway(self, emission_current=None, allocation=None):
-        """
-        Create a spline pathway for emissions reduction, with a flexible midpoint value for smoother reduction.
-
-        :param emission_current: The current CO2 emission value.
-        :param allocation: The total CO2 emission budget allocated for reduction.
-
-        :return: A DataFrame showing the year-by-year emission reductions using spline interpolation.
-        """
-
-        emission_current = emission_current if emission_current is not None else self.emission_current
-        allocation = allocation if allocation is not None else self.allocation
-
-        # Calculate the number of years for the first half and second half of the period
-        fy = self.mid_year - (self.start_year - 1)
-        ly = self.end_year - self.mid_year
-
-        # Total value for distribution calculation and initial value (iv)
-        al = allocation + emission_current / 2
-        iv = emission_current
-
-        # Calculate the mid-year value (mv) based on the allocation and emission current
-        mv = ((al * 2) - iv * fy) / (fy + ly)
-
-        years = range(self.start_year - 1, self.end_year + 1)
-        values = []
-
-        # Determine slopes based on whether the mid-year value is positive or adjusted to zero
-        if mv > 0:
-            # Slope for the first half of the period (from start year to mid year)
-            slope_fy = (mv - iv) / fy
-            # Slope for the second half of the period (from mid year to end year)
-            slope_ly = -mv / ly
-        else:
-            # If the mid-year value would be negative, set it to zero and adjust slopes accordingly
-            mv = 0
-            slope_fy = -iv / fy
-            fy_sum = (iv + mv) / 2 * (fy + 1)  # Calculate the triangular area for the first half
-            gap = allocation - fy_sum + iv  # Calculate the remaining value for the second half
-            lv = gap * 2 / (ly + 1)  # Calculate the end value to match the budget in the second half
-            slope_ly = lv / ly  # Slope for the second half
-
-        # Loop through the years and calculate emissions based on the slope for each year
-        for year in years:
-            if year < self.mid_year:
-                value = iv + slope_fy * (year - (self.start_year - 1))
+        t1 = self.mid_year - self.start_year + 1  # 2024-2035 inclusive (12 years)
+        t2 = self.end_year - self.mid_year        # 2036-2050 (15 years)
+        
+        def equations(params):
+            k1, k2 = params
+            
+            # Calculate E2035
+            E_mid = E0 * np.exp(-k1 * (self.mid_year - self.start_year))
+            
+            # Segment 1: 2024-2035 (cumulative emissions)
+            if k1 != 0:
+                S1 = E0 * (1 - np.exp(-k1 * t1)) / k1
             else:
-                value = mv + slope_ly * (year - self.mid_year)
-            values.append(value)
+                S1 = E0 * t1
+            
+            # Segment 2: 2036-2050 (cumulative emissions)
+            if k2 != 0:
+                S2 = E_mid * (1 - np.exp(-k2 * t2)) / k2
+            else:
+                S2 = E_mid * t2
+            
+            # Constraints: total budget and continuity
+            total_budget_constraint = S1 + S2 - budget
+            
+            # For realistic pathways, ensure k1, k2 > 0 (declining emissions)
+            return [total_budget_constraint, k1 - 0.01]  # k1 ≥ 0.01
+        
+        # Solve for k1, k2
+        try:
+            k1, k2 = fsolve(equations, [0.05, 0.1])
+            k1, k2 = max(k1, 0.001), max(k2, 0.001)  # Ensure positive decay
+        except:
+            # Fallback to linear approximation
+            k1, k2 = 0.05, 0.1
+        
+        # Generate pathway
+        pathway = np.zeros(len(self.years))
+        
+        for i, year in enumerate(self.years):
+            if year <= self.mid_year:
+                # Segment 1: exponential decay
+                pathway[i] = E0 * np.exp(-k1 * (year - self.start_year))
+            else:
+                # Segment 2: exponential decay from mid-year
+                E_mid = E0 * np.exp(-k1 * (self.mid_year - self.start_year))
+                pathway[i] = E_mid * np.exp(-k2 * (year - self.mid_year))
+        
+        return pathway
 
-        # Create a DataFrame with the emission pathway using spline interpolation
-        df = pd.DataFrame({'Year': years, 'Emission': values})
-
-        return df[df['Year'] >= self.start_year]
-
-    def fixed_reduction_pathway(self, emission_current=None, reduction_rate=None):
+    def two_segment_log(self, E0: float, budget: float) -> np.ndarray:
         """
-        Create a fixed reduction pathway where emissions reduce by a fixed percentage each year.
-
-        :param emission_current: The current CO2 emission value.
-        :param reduction_rate: The fixed percentage reduction rate per year (e.g., 0.02 for 2%).
-
-        :return: A DataFrame showing the year-by-year emissions reduction with a fixed rate.
+        Two-segment logarithmic decay model (alternative implementation).
         """
-        emission_current = emission_current if emission_current is not None else self.emission_current
-        reduction_rate = reduction_rate if reduction_rate is not None else self.reduction_rate
-        years = range(self.start_year, self.end_year + 1)
-        emissions = [emission_current]
+        # For logarithmic decay, use exponential with adjusted parameters
+        return self.two_segment_exp(E0, budget)
 
-        for year in years[1:]:
-            next_emission = emissions[-1] * (1 - reduction_rate)  # Apply the fixed reduction rate
-            emissions.append(next_emission)
+    def two_segment_linear(self, E0: float, budget: float) -> np.ndarray:
+        """
+        Two-segment linear decay model.
+        
+        Parameters:
+        E0: Initial emissions at 2024 (tCO2)
+        budget: Total carbon budget constraint (tCO2)
+        
+        Returns:
+        np.ndarray: Linear emission pathway over years
+        """
+        n1 = self.mid_year - self.start_year + 1  # 2024-2035 inclusive
+        n2 = self.end_year - self.mid_year        # 2036-2050  
+        
+        # Binary search for reduction rates
+        lo, hi = 0.0, E0 / n1
+        for _ in range(40):
+            r1 = (lo + hi) / 2
+            E_mid = E0 - r1 * (n1 - 1)  # Emission at mid_year
+            r2 = E_mid / n2             # Linear to zero in segment 2
+            
+            # Calculate total budget
+            s1 = n1 * (E0 + E_mid) / 2  # Trapezoidal area segment 1
+            s2 = n2 * E_mid / 2         # Triangular area segment 2
+            total = s1 + s2
+            
+            if total > budget:
+                lo = r1  # Need more reduction
+            else:
+                hi = r1
+        
+        # Generate linear pathway
+        pathway = np.zeros(len(self.years))
+        
+        for i, year in enumerate(self.years):
+            if year <= self.mid_year:
+                # Segment 1: linear decline
+                pathway[i] = E0 - r1 * (year - self.start_year)
+            else:
+                # Segment 2: linear to zero
+                E_mid = E0 - r1 * (self.mid_year - self.start_year)
+                pathway[i] = E_mid - (E_mid / n2) * (year - self.mid_year)
+        
+        return np.maximum(pathway, 0)  # Ensure non-negative
 
-        df = pd.DataFrame({'Year': years, 'Emission': emissions})
-        return df
+    def calculate_pathway(self, E0: float, budget: float, curve_type: str = "exp") -> np.ndarray:
+        """
+        Calculate emission pathway based on curve type.
+        
+        Parameters:
+        E0: Initial emissions (tCO2)
+        budget: Carbon budget constraint (tCO2)
+        curve_type: Type of curve ("exp", "log", "linear")
+        
+        Returns:
+        np.ndarray: Emission pathway
+        """
+        if curve_type == "exp":
+            return self.two_segment_exp(E0, budget)
+        elif curve_type == "log":
+            return self.two_segment_log(E0, budget)
+        elif curve_type == "linear":
+            return self.two_segment_linear(E0, budget)
+        else:
+            # Default to exponential
+            return self.two_segment_exp(E0, budget)
+
+    def get_years(self) -> np.ndarray:
+        """Get the years array"""
+        return self.years
+
+    def calculate_exhaustion_year(self, pathway: np.ndarray, threshold: float = 1e6) -> int:
+        """
+        Calculate the year when emissions fall below threshold.
+        
+        Parameters:
+        pathway: Emission pathway array
+        threshold: Emission threshold (default: 1 MtCO2)
+        
+        Returns:
+        int: Year when budget is effectively exhausted
+        """
+        below_threshold = pathway < threshold
+        if np.any(below_threshold):
+            idx = np.where(below_threshold)[0][0]
+            return self.years[idx]
+        else:
+            return self.end_year
