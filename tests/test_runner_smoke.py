@@ -13,11 +13,10 @@ from pathlib import Path
 import sys
 import os
 
-# Add parent directories to path
+# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / 'model_D_MC'))
 
-from model_D_MC.mc_runner import run_monte_carlo_analysis
+from budget_chemical.monte_carlo.runner import run_monte_carlo_analysis
 
 
 class TestRunnerSmoke:

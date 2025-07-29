@@ -46,12 +46,23 @@ budget_chemical/
 │   ├── pathwayCalculation.py # Emission pathway algorithms
 │   ├── utils.py              # Utility functions
 │   └── process.py            # Data processing workflows
-├── model_D_MC/               # Monte Carlo analysis framework
-│   ├── mc_config.yaml        # Configuration parameters
-│   ├── mc_runner.py          # Main Monte Carlo execution
-│   ├── mc_sampler.py         # Statistical sampling methods
-│   ├── mc_metrics.py         # Performance metrics calculation
-│   ├── viz.py                # Visualization and plotting
+├── budget_chemical/          # Main package
+│   ├── core/                 # Core functionality
+│   │   ├── budget_calculation.py
+│   │   ├── data_api.py
+│   │   ├── pathway_calculation.py
+│   │   └── utils.py
+│   ├── monte_carlo/          # Monte Carlo framework
+│   │   ├── runner.py         # Main Monte Carlo execution
+│   │   ├── sampler.py
+│   │   ├── metrics.py
+│   │   ├── pathway_calculator.py
+│   │   └── visualization.py
+│   └── scripts/              # Standalone scripts
+├── config/                   # Configuration files
+│   └── mc_config.yaml
+├── examples/                 # Debug and example scripts
+├── tests/                    # Test files
 │   └── pathwayCalculation.py # MC-specific pathway calculations
 └── outputs/                  # Generated results and visualizations
     ├── *_fan_chart.png       # Uncertainty fan charts
@@ -139,8 +150,7 @@ petrochem_fraction: 0.10         # Petrochemical fraction of industry (10%)
 
 #### Running Monte Carlo Analysis
 ```bash
-cd model_D_MC
-python mc_runner.py
+python run_monte_carlo.py config/mc_config.yaml
 ```
 
 **Outputs Generated:**

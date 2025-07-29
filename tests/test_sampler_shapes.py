@@ -10,11 +10,10 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Add parent directories to path
+# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / 'model_D_MC'))
 
-from model_D_MC.mc_sampler import Sampler
+from budget_chemical.monte_carlo.sampler import Sampler
 
 
 class TestSamplerShapes:
