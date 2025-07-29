@@ -1,0 +1,190 @@
+{
+  "analysis_metadata": {
+    "timestamp": "20250729_222853",
+    "climate_scenario": "1.5\u00b0C",
+    "curve_type": "s_curve",
+    "combination": "1.5\u00b0C_s_curve",
+    "n_draws": 30,
+    "failed_draws": 0,
+    "success_rate": 1.0,
+    "runtime_seconds": 5.037584
+  },
+  "timeline": {
+    "start_year": 2024,
+    "end_year": 2050,
+    "n_years": 27
+  },
+  "budget_statistics": {
+    "industry": {
+      "mean": 2342243959.6542697,
+      "median": 2337231289.329122,
+      "std": 171963611.38172284,
+      "min": 1998520336.4330084,
+      "max": 2914989143.8119497,
+      "p05": 2134982135.2060225,
+      "p25": 2229995506.250821,
+      "p75": 2433799829.7026143,
+      "p95": 2591505585.693456,
+      "cv": 0.07341831779431968
+    },
+    "petrochem": {
+      "mean": 234224395.96542698,
+      "median": 233723128.93291223,
+      "std": 17196361.138172287,
+      "min": 199852033.64330086,
+      "max": 291498914.381195,
+      "p05": 213498213.52060226,
+      "p25": 222999550.62508214,
+      "p75": 243379982.97026145,
+      "p95": 259150558.56934562,
+      "cv": 0.07341831779431969
+    }
+  },
+  "pathway_statistics": {
+    "industry": {
+      "n_draws": 30,
+      "n_years": 27,
+      "timeline": [
+        2024,
+        2050
+      ],
+      "initial_emissions": {
+        "mean": 183591913.4876978,
+        "median": 185000000.0,
+        "std": 6091443.908252407,
+        "p05": 179896009.3120503,
+        "p95": 185000000.0
+      },
+      "final_emissions": {
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "p05": 0.0,
+        "p95": 0.0
+      },
+      "mid_emissions": {
+        "mean": 92991683.91851716,
+        "median": 91954825.41909286,
+        "std": 8828693.064282563,
+        "p05": 82543280.44113249,
+        "p95": 108938245.91022232
+      },
+      "cumulative_emissions": {
+        "mean": 2341496995.909886,
+        "median": 2336354072.6141167,
+        "std": 171466044.30958688,
+        "p05": 2134506387.6202288,
+        "p95": 2587652727.2160506
+      },
+      "reduction_rates": {
+        "mean": 100.0,
+        "median": 100.0,
+        "std": 0.0,
+        "p05": 100.0,
+        "p95": 100.0
+      },
+      "peak_years": {
+        "mean": 2024.0,
+        "median": 2024.0,
+        "most_common": 2024
+      },
+      "zero_crossing_years": {
+        "mean": 2050.0,
+        "median": 2050.0,
+        "p05": 2050.0,
+        "p95": 2050.0
+      },
+      "pathway_variability": {
+        "mean_cv": 0.1090158032411145,
+        "max_cv": 0.24202644712514856,
+        "max_variability_year": 2049
+      },
+      "pathway_characteristics": {
+        "monotonic_decreasing_fraction": 2.0,
+        "early_peak_fraction": 0.0,
+        "late_peak_fraction": 0.0,
+        "oscillating_fraction": 0.0,
+        "front_loaded_fraction": 1.0,
+        "back_loaded_fraction": 0.0,
+        "convex_fraction": 0.0,
+        "concave_fraction": 1.0
+      }
+    },
+    "petrochem": {
+      "n_draws": 30,
+      "n_years": 27,
+      "timeline": [
+        2024,
+        2050
+      ],
+      "initial_emissions": {
+        "mean": 50000000.0,
+        "median": 50000000.0,
+        "std": 0.0,
+        "p05": 50000000.0,
+        "p95": 50000000.0
+      },
+      "final_emissions": {
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "p05": 0.0,
+        "p95": 0.0
+      },
+      "mid_emissions": {
+        "mean": 4795660.167031868,
+        "median": 4757018.175334945,
+        "std": 853365.9729396928,
+        "p05": 3786185.9176652078,
+        "p95": 6032804.87125091
+      },
+      "cumulative_emissions": {
+        "mean": 234195712.50826553,
+        "median": 233694680.91866753,
+        "std": 17100253.04344776,
+        "p05": 213561295.80317357,
+        "p95": 258941096.7368759
+      },
+      "reduction_rates": {
+        "mean": 100.0,
+        "median": 100.0,
+        "std": 0.0,
+        "p05": 100.0,
+        "p95": 100.0
+      },
+      "peak_years": {
+        "mean": 2024.0,
+        "median": 2024.0,
+        "most_common": 2024
+      },
+      "zero_crossing_years": {
+        "mean": 2050.0,
+        "median": 2050.0,
+        "p05": 2050.0,
+        "p95": 2050.0
+      },
+      "pathway_variability": {
+        "mean_cv": 0.20316639261026684,
+        "max_cv": 0.4470885537040774,
+        "max_variability_year": 2049
+      },
+      "pathway_characteristics": {
+        "monotonic_decreasing_fraction": 2.0,
+        "early_peak_fraction": 0.0,
+        "late_peak_fraction": 0.0,
+        "oscillating_fraction": 0.0,
+        "front_loaded_fraction": 1.0,
+        "back_loaded_fraction": 0.0,
+        "convex_fraction": 1.0,
+        "concave_fraction": 0.0
+      }
+    }
+  },
+  "validation": {
+    "total_draws": 30,
+    "industry_valid_count": 27,
+    "petrochem_valid_count": 29,
+    "mean_industry_error": 0.040892066951195606,
+    "mean_petrochem_error": 0.04872403698073742
+  }
+}

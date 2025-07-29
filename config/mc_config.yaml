@@ -2,15 +2,23 @@
 # Updated configuration following the refactored requirements
 
 # Monte Carlo settings
-n_draws: 10
+n_draws: 100
 seed: 123
 output_dir: outputs
 
-# Global carbon budget scenarios (tCO2) - IPCC 1.5°C scenarios
+# Scenario processing mode
+scenario_mode: separate  # 'mixed' for random sampling, 'separate' for distinct runs, 'separate_methods' for climate+curve combinations
+
+# Global carbon budget scenarios (tCO2) - IPCC scenarios
 global_budget:
-  low: 450000000000.0    # Conservative estimate
-  mid: 500000000000.0    # Central estimate  
-  high: 550000000000.0   # Optimistic estimate
+  "1p5C":
+    low: 4.00e11   # 400 Gt CO₂  (67% chance of staying below 1.5°C)
+    mid: 5.00e11   # 500 Gt CO₂  (50% chance)
+    high: 6.70e11  # 670 Gt CO₂  (33% chance)
+  "2p0C":
+    low: 1.05e12   # 1050 Gt CO₂  (67% chance of staying below 2.0°C)
+    mid: 1.15e12   # 1150 Gt CO₂  (50% chance)
+    high: 1.29e12  # 1290 Gt CO₂  (33% chance)
 
 # User-defined weights for BKIR formula (must sum to 1.0)
 # Weights will have ±2.5 percentage-point noise added during sampling
@@ -41,20 +49,13 @@ uncertainty:
 industry_fraction: 0.37    # Share of Korea's budget allocated to industry
 petrochem_fraction: 0.10   # Share of industry budget allocated to petrochemicals
 
-# Pathway generation settings
+# Pathway generation settings - SIMPLIFIED
 timeline:
   start_year: 2024
-  mid_year: 2035   # Fixed midpoint for front-loading calculations
-  end_year: 2050
+  end_year: 2050   # Linear decay to zero emissions by 2050
 
 # Available curve types for emission pathways
-curve_types: ["linear", "exp", "log"]
-
-# Front-loading parameter λ distribution (fraction of budget spent by mid_year)
-lambda_dist:
-  type: beta      # Beta distribution for bounded [0,1] values
-  a: 2.0          # Alpha parameter (shape)
-  b: 2.0          # Beta parameter (shape)
+curve_types: ["exp", "log", "s_curve"]
 
 # Pathway solver settings
 solver:
@@ -71,6 +72,11 @@ outputs:
 base_emissions:
   industry: 185000000.0    # 185 MtCO2 for Korean industry sector
   petrochem: 50000000.0    # 50 MtCO2 for Korean petrochemical sector
+
+# Baseline emissions for reduction rate calculations (tCO2/year) - 2023 baseline
+baseline_2023:
+  industry: 185000000.0    # 185 MtCO2 for Korean industry sector in 2023
+  petrochem: 50000000.0    # 50 MtCO2 for Korean petrochemical sector in 2023
 
 # Logging settings
 logging:
