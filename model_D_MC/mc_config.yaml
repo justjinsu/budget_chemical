@@ -1,25 +1,78 @@
+# Monte Carlo Configuration for Carbon Budget Allocation
+# Updated configuration following the refactored requirements
+
+# Monte Carlo settings
 n_draws: 3000
 seed: 123
-curve_type: log
-global_budget: 
-  low: 450000000000.0
-  mid: 500000000000.0
-  high: 550000000000.0
-user_weights: 
-  responsibility: 0.3
-  capability: 0.4
-  equality: 0.3
-uncertainty:
-  responsibility: 
-    low: 0.009
-    mid: 0.011
-    high: 0.013
-  capability: 
-    mu: 0.017
-    sd_pct: 0.05
-  equality: 
-    mu: 0.0067
-    sd_pct: 0.03
-industry_fraction: 0.37
-petrochem_fraction: 0.10
 output_dir: outputs
+
+# Global carbon budget scenarios (tCO2) - IPCC 1.5°C scenarios
+global_budget:
+  low: 4.5e11    # Conservative estimate
+  mid: 5.0e11    # Central estimate  
+  high: 5.5e11   # Optimistic estimate
+
+# User-defined weights for BKIR formula (must sum to 1.0)
+# Weights will have ±2.5 percentage-point noise added during sampling
+user_weights:
+  responsibility: 0.30  # Historical responsibility factor weight
+  capability: 0.40      # Economic capability factor weight
+  equality: 0.30        # Per-capita equality factor weight
+
+# Uncertainty distributions for allocation factors
+uncertainty:
+  # Responsibility share (historical cumulative emissions share)
+  responsibility:
+    low: 0.0095   # Minimum share
+    mid: 0.0110   # Most likely share
+    high: 0.0128  # Maximum share
+  
+  # Capability share (GDP share) - normal distribution
+  capability:
+    mu: 0.017     # Mean GDP share
+    sd_pct: 0.05  # Standard deviation as percentage of mean
+  
+  # Equality share (population share) - normal distribution  
+  equality:
+    mu: 0.0067    # Mean population share
+    sd_pct: 0.03  # Standard deviation as percentage of mean
+
+# Sectoral allocation fractions
+industry_fraction: 0.37    # Share of Korea's budget allocated to industry
+petrochem_fraction: 0.10   # Share of industry budget allocated to petrochemicals
+
+# Pathway generation settings
+timeline:
+  start_year: 2024
+  mid_year: 2035   # Fixed midpoint for front-loading calculations
+  end_year: 2050
+
+# Available curve types for emission pathways
+curve_types: ["linear", "exp", "log"]
+
+# Front-loading parameter λ distribution (fraction of budget spent by mid_year)
+lambda_dist:
+  type: beta      # Beta distribution for bounded [0,1] values
+  a: 2.0          # Alpha parameter (shape)
+  b: 2.0          # Beta parameter (shape)
+
+# Pathway solver settings
+solver:
+  tolerance: 1e-3   # Budget matching tolerance (0.1%)
+  max_iter: 60      # Maximum iterations for numerical solver
+
+# Output settings
+outputs:
+  quantiles: [0.05, 0.25, 0.50, 0.75, 0.95]  # Percentiles for fan charts
+  save_raw_paths: true                         # Save all MC paths to CSV
+  create_plots: true                          # Generate visualization plots
+
+# Base emissions (tCO2/year) - 2023 baseline
+base_emissions:
+  industry: 185.0e6    # 185 MtCO2 for Korean industry sector
+  petrochem: 50.0e6    # 50 MtCO2 for Korean petrochemical sector
+
+# Logging settings
+logging:
+  level: INFO
+  progress_interval: 500  # Print progress every N draws
