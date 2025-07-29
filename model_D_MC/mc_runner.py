@@ -17,12 +17,13 @@ from typing import Dict, Any, List, Tuple
 import numpy as np
 import pandas as pd
 
-# Add lib directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+# Add current directory first, then lib directory to path
+sys.path.insert(0, str(Path(__file__).parent))  # model_D_MC directory
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))  # lib directory
 
 from mc_sampler import Sampler
-from pathwayCalculation import PathwayCalculator
-from budgetCalculation import BudgetAllocation
+from pathway_calculator import PathwayCalculator  # This module (model_D_MC)
+from budgetCalculation import BudgetAllocation  # From lib directory
 from mc_metrics import compute_fan_quantiles, calculate_summary_stats
 from viz import create_fan_charts, save_uncertainty_plots
 
@@ -189,7 +190,9 @@ def run_monte_carlo_analysis(config_path: str) -> None:
             })
             
         except Exception as e:
-            logger.warning(f"Failed to generate pathway for draw {i}: {e}")
+            import traceback
+            logger.error(f"Failed to generate pathway for draw {i}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             failed_draws += 1
             # Fill with fallback linear decay
             industry_paths[i, :] = industry_base_emission * np.linspace(1, 0, len(years))

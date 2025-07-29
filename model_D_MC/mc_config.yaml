@@ -2,15 +2,15 @@
 # Updated configuration following the refactored requirements
 
 # Monte Carlo settings
-n_draws: 3000
+n_draws: 10
 seed: 123
 output_dir: outputs
 
 # Global carbon budget scenarios (tCO2) - IPCC 1.5°C scenarios
 global_budget:
-  low: 4.5e11    # Conservative estimate
-  mid: 5.0e11    # Central estimate  
-  high: 5.5e11   # Optimistic estimate
+  low: 450000000000.0    # Conservative estimate
+  mid: 500000000000.0    # Central estimate  
+  high: 550000000000.0   # Optimistic estimate
 
 # User-defined weights for BKIR formula (must sum to 1.0)
 # Weights will have ±2.5 percentage-point noise added during sampling
@@ -58,7 +58,7 @@ lambda_dist:
 
 # Pathway solver settings
 solver:
-  tolerance: 1e-3   # Budget matching tolerance (0.1%)
+  tolerance: 0.001   # Budget matching tolerance (0.1%)
   max_iter: 60      # Maximum iterations for numerical solver
 
 # Output settings
@@ -69,8 +69,8 @@ outputs:
 
 # Base emissions (tCO2/year) - 2023 baseline
 base_emissions:
-  industry: 185.0e6    # 185 MtCO2 for Korean industry sector
-  petrochem: 50.0e6    # 50 MtCO2 for Korean petrochemical sector
+  industry: 185000000.0    # 185 MtCO2 for Korean industry sector
+  petrochem: 50000000.0    # 50 MtCO2 for Korean petrochemical sector
 
 # Logging settings
 logging:
