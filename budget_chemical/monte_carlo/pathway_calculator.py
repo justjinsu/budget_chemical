@@ -47,6 +47,9 @@ class PathwayCalculator:
         self.tolerance = float(config.get('tolerance', 1e-3))
         self.max_iter = int(config.get('max_iter', 60))
         
+        # Epsilon for gradual approach to zero instead of hard constraint
+        self.end_epsilon = float(config.get('end_epsilon', 1e4))  # 10,000 tCO2/year minimum
+        
         logger.debug(f"Dual-scenario PathwayCalculator initialized for {self.start_year}-{self.end_year}")
     
     def build_path(self, start_emission: float, budget: float, curve_type: str = 'exp', 
@@ -109,8 +112,8 @@ class PathwayCalculator:
             time_from_start = self.years - self.start_year
             pathway = start_emission * np.exp(-k * time_from_start)
             
-            # Force final year to zero
-            pathway[-1] = 0.0
+            # Gradual approach to epsilon instead of hard zero
+            pathway[-1] = max(pathway[-1], self.end_epsilon)
             
             # Calculate cumulative budget
             calc_budget = np.trapz(pathway, dx=1.0)
@@ -165,7 +168,7 @@ class PathwayCalculator:
         # Generate final pathway
         time_from_start = self.years - self.start_year
         pathway = start_emission * np.exp(-k_optimal * time_from_start)
-        pathway[-1] = 0.0  # Ensure zero end point
+        pathway[-1] = max(pathway[-1], self.end_epsilon)  # Gradual approach to epsilon
         
         logger.debug(f"Exponential pathway: k={k_optimal:.4f}")
         
@@ -200,8 +203,8 @@ class PathwayCalculator:
             # Ensure non-negative emissions
             pathway = np.maximum(pathway, 0.0)
             
-            # Force final year to zero
-            pathway[-1] = 0.0
+            # Gradual approach to epsilon instead of hard zero
+            pathway[-1] = max(pathway[-1], self.end_epsilon)
             
             # Calculate cumulative budget
             calc_budget = np.trapz(pathway, dx=1.0)
@@ -236,7 +239,7 @@ class PathwayCalculator:
         t_norm = time_from_start / time_span
         pathway = start_emission * (1 - a_optimal * t_norm**2)
         pathway = np.maximum(pathway, 0.0)  # Ensure non-negative
-        pathway[-1] = 0.0  # Ensure zero end point
+        pathway[-1] = max(pathway[-1], self.end_epsilon)  # Gradual approach to epsilon
         
         logger.debug(f"Convex pathway: a={a_optimal:.4f}, budget={budget:.2e}")
         
@@ -274,8 +277,8 @@ class PathwayCalculator:
                 reduction_factor = (1 - t_norm[mask]) / remaining_time
                 pathway[mask] = start_emission * reduction_factor
             
-            # Force final year to zero
-            pathway[-1] = 0.0
+            # Gradual approach to epsilon instead of hard zero
+            pathway[-1] = max(pathway[-1], self.end_epsilon)
             
             # Calculate cumulative budget
             calc_budget = np.trapz(pathway, dx=1.0)
@@ -323,7 +326,7 @@ class PathwayCalculator:
             reduction_factor = (1 - t_norm[mask]) / remaining_time
             pathway[mask] = start_emission * reduction_factor
         
-        pathway[-1] = 0.0  # Ensure zero end point
+        pathway[-1] = max(pathway[-1], self.end_epsilon)  # Gradual approach to epsilon
         
         logger.debug(f"Late-reduction pathway: transition={transition_optimal:.4f}, budget={budget:.2e}")
         
@@ -352,8 +355,8 @@ class PathwayCalculator:
             # Use 1 - log(a*t + 1) / log(a + 1) to ensure it goes from 1 to 0
             pathway = start_emission * (1 - np.log(a * t_norm + 1) / np.log(a + 1))
             
-            # Force final year to zero
-            pathway[-1] = 0.0
+            # Gradual approach to epsilon instead of hard zero
+            pathway[-1] = max(pathway[-1], self.end_epsilon)
             
             # Calculate cumulative budget
             calc_budget = np.trapz(pathway, dx=1.0)
@@ -372,7 +375,7 @@ class PathwayCalculator:
         time_from_start = self.years - self.start_year
         t_norm = time_from_start / time_span
         pathway = start_emission * (1 - np.log(a_optimal * t_norm + 1) / np.log(a_optimal + 1))
-        pathway[-1] = 0.0  # Ensure zero end point
+        pathway[-1] = max(pathway[-1], self.end_epsilon)  # Gradual approach to epsilon
         
         logger.debug(f"Logarithmic pathway: a={a_optimal:.4f}")
         
@@ -406,8 +409,8 @@ class PathwayCalculator:
             
             pathway = start_emission * s_curve
             
-            # Force final year to zero
-            pathway[-1] = 0.0
+            # Gradual approach to epsilon instead of hard zero
+            pathway[-1] = max(pathway[-1], self.end_epsilon)
             
             # Calculate cumulative budget
             calc_budget = np.trapz(pathway, dx=1.0)
@@ -428,7 +431,7 @@ class PathwayCalculator:
         midpoint = 0.5
         s_curve = 1 / (1 + np.exp(k_optimal * (t_norm - midpoint)))
         pathway = start_emission * s_curve
-        pathway[-1] = 0.0  # Ensure zero end point
+        pathway[-1] = max(pathway[-1], self.end_epsilon)  # Gradual approach to epsilon
         
         logger.debug(f"S-curve pathway: k={k_optimal:.4f}")
         
@@ -485,7 +488,7 @@ class PathwayCalculator:
         
         # Check constraints
         starts_positive = pathway[0] > 0
-        ends_zero = abs(pathway[-1]) < 1e-6  # Very small threshold for zero
+        ends_near_epsilon = abs(pathway[-1] - self.end_epsilon) < self.end_epsilon * 0.1  # Within 10% of epsilon
         non_negative = np.all(pathway >= -1e-6)  # Allow tiny numerical errors
         
         validation = {
@@ -495,9 +498,10 @@ class PathwayCalculator:
             'actual_budget': actual_budget,
             'target_budget': target_budget,
             'starts_positive': starts_positive,
-            'ends_zero': ends_zero,
+            'ends_near_epsilon': ends_near_epsilon,
             'non_negative': non_negative,
-            'tolerance_pct': self.tolerance * 100
+            'tolerance_pct': self.tolerance * 100,
+            'end_epsilon': self.end_epsilon
         }
         
         logger.debug(f"Validation: budget_error={budget_error_pct:.3f}%, valid={is_valid}")

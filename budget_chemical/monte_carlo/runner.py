@@ -108,6 +108,8 @@ def run_monte_carlo_analysis(config_path: str) -> None:
         run_separate_scenarios(config_path, config, start_time)
     elif scenario_mode == 'separate_methods':
         run_separate_methods(config_path, config, start_time)
+    elif scenario_mode == 'combined':
+        run_combined_analysis(config_path, config, start_time)
     else:
         run_mixed_scenarios(config_path, config, start_time)
 
@@ -1004,6 +1006,323 @@ def print_separate_methods_results(all_summaries: Dict[str, Dict[str, Any]]) -> 
                   f"Petrochem {val['petrochem_valid_count']}/{val['total_draws']} ({val['petrochem_valid_count']/val['total_draws']:.1%})")
     
     print("\n" + "="*80)
+
+
+def run_combined_analysis(config_path: str, config: Dict[str, Any], start_time: datetime) -> None:
+    """
+    Run combined analysis: separate methods + mixed scenarios analysis.
+    
+    This runs both separate_methods mode AND mixed scenarios mode to provide
+    comprehensive analysis comparing individual methods vs combined approach.
+    
+    Args:
+        config_path: Path to configuration file
+        config: Configuration dictionary
+        start_time: Analysis start time
+    """
+    logger.info("Running combined analysis (separate methods + mixed scenarios)")
+    
+    # Setup output directory
+    output_dir = setup_output_directory(config)
+    
+    # First run separate methods analysis
+    logger.info("Phase 1: Running separate climate scenario and decay method combinations...")
+    run_separate_methods(config_path, config, start_time)
+    
+    # Then run mixed scenarios analysis for comparison
+    logger.info("Phase 2: Running mixed scenario analysis for comparison...")
+    
+    # Create mixed output directory
+    mixed_output_dir = output_dir / 'mixed_analysis'
+    mixed_output_dir.mkdir(exist_ok=True)
+    
+    # Create years array
+    years = create_years_array(config)
+    
+    # Initialize components for mixed analysis
+    sampler = Sampler(config)
+    pathway_calc = PathwayCalculator(years, config.get('solver', {}))
+    budget_allocator = BudgetAllocation(config=config)
+    
+    # Extract configuration parameters
+    n_draws = config['n_draws']
+    industry_fraction = config['industry_fraction']
+    petrochem_fraction = config['petrochem_fraction']
+    progress_interval = config.get('logging', {}).get('progress_interval', 500)
+    
+    logger.info(f"Running {n_draws} Monte Carlo draws for mixed analysis")
+    
+    # Sample all uncertain parameters (mixed scenarios and methods)
+    samples = sampler.sample_all(n_draws)
+    
+    # Calculate budgets for all draws
+    industry_budgets, petrochem_budgets = budget_allocator.calculate_sector_budgets_batch(
+        samples['global_budgets'],
+        samples['responsibility_shares'],
+        samples['capability_shares'],
+        samples['equality_shares'],
+        samples['weights'],
+        industry_fraction,
+        petrochem_fraction
+    )
+    
+    # Get base emissions
+    industry_base_emission = budget_allocator.get_base_emissions('industry')
+    petrochem_base_emission = budget_allocator.get_base_emissions('petrochem')
+    
+    # Initialize pathway storage
+    industry_paths = np.zeros((n_draws, len(years)))
+    petrochem_paths = np.zeros((n_draws, len(years)))
+    
+    # Validation tracking
+    validation_results = []
+    failed_draws = 0
+    
+    logger.info("Generating mixed emission pathways...")
+    
+    # Generate pathways for each Monte Carlo draw (mixed methods)
+    for i in range(n_draws):
+        if (i + 1) % progress_interval == 0:
+            logger.info(f"Completed {i + 1}/{n_draws} draws ({100*(i+1)/n_draws:.1f}%)")
+        
+        try:
+            # Industry pathway (random curve type per draw)
+            industry_path = pathway_calc.build_path(
+                start_emission=industry_base_emission,
+                budget=industry_budgets[i],
+                curve_type=samples['curve_types'][i]
+            )
+            industry_paths[i, :] = industry_path
+            
+            # Petrochemical pathway (random curve type per draw)
+            petrochem_path = pathway_calc.build_path(
+                start_emission=petrochem_base_emission,
+                budget=petrochem_budgets[i],
+                curve_type=samples['curve_types'][i]
+            )
+            petrochem_paths[i, :] = petrochem_path
+            
+            # Validate pathways
+            industry_validation = pathway_calc.validate_pathway(industry_path, industry_budgets[i])
+            petrochem_validation = pathway_calc.validate_pathway(petrochem_path, petrochem_budgets[i])
+            
+            validation_results.append({
+                'draw': i,
+                'industry_valid': industry_validation['is_valid'],
+                'petrochem_valid': petrochem_validation['is_valid'],
+                'industry_budget_error': industry_validation['budget_error_pct'],
+                'petrochem_budget_error': petrochem_validation['budget_error_pct'],
+                'scenario': samples['scenarios'][i],
+                'curve_type': samples['curve_types'][i]
+            })
+            
+        except Exception as e:
+            logger.error(f"Failed to generate pathway for draw {i}: {e}")
+            failed_draws += 1
+            # Fill with fallback linear decay
+            industry_paths[i, :] = industry_base_emission * np.linspace(1, 0, len(years))
+            petrochem_paths[i, :] = petrochem_base_emission * np.linspace(1, 0, len(years))
+    
+    logger.info(f"Mixed pathway generation completed. Failed draws: {failed_draws}/{n_draws}")
+    
+    # Calculate quantiles for fan charts
+    logger.info("Computing quantiles for mixed analysis...")
+    quantiles = config['outputs']['quantiles']
+    
+    industry_quantiles = compute_fan_quantiles(industry_paths, quantiles)
+    petrochem_quantiles = compute_fan_quantiles(petrochem_paths, quantiles)
+    
+    # Save mixed analysis outputs
+    save_mixed_analysis_outputs(
+        mixed_output_dir, years, industry_paths, petrochem_paths,
+        industry_quantiles, petrochem_quantiles, quantiles,
+        samples, {'industry': industry_budgets, 'petrochem': petrochem_budgets},
+        validation_results, config
+    )
+    
+    # Create combined summary
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Calculate scenario-specific statistics for mixed analysis
+    scenario_stats = {}
+    for scenario in ['1p5C', '2p0C']:
+        scenario_mask = np.array(samples['scenarios']) == scenario
+        scenario_count = np.sum(scenario_mask)
+        
+        if scenario_count > 0:
+            scenario_stats[scenario] = {
+                'count': int(scenario_count),
+                'proportion': float(scenario_count / n_draws),
+                'industry_budget_stats': budget_allocator.get_budget_statistics(industry_budgets[scenario_mask]),
+                'petrochem_budget_stats': budget_allocator.get_budget_statistics(petrochem_budgets[scenario_mask])
+            }
+    
+    # Calculate curve type distribution
+    curve_stats = {}
+    for curve in config['curve_types']:
+        curve_mask = np.array(samples['curve_types']) == curve
+        curve_count = np.sum(curve_mask)
+        curve_stats[curve] = {
+            'count': int(curve_count),
+            'proportion': float(curve_count / n_draws)
+        }
+    
+    mixed_summary = {
+        'analysis_metadata': {
+            'timestamp': timestamp,
+            'analysis_type': 'mixed_scenarios_and_methods',
+            'n_draws': n_draws,
+            'failed_draws': failed_draws,
+            'success_rate': (n_draws - failed_draws) / n_draws,
+            'runtime_seconds': (datetime.now() - start_time).total_seconds()
+        },
+        'timeline': {
+            'start_year': int(years[0]),
+            'end_year': int(years[-1]),
+            'n_years': len(years)
+        },
+        'scenario_statistics': scenario_stats,
+        'curve_type_statistics': curve_stats,
+        'budget_statistics': {
+            'industry': budget_allocator.get_budget_statistics(industry_budgets),
+            'petrochem': budget_allocator.get_budget_statistics(petrochem_budgets)
+        },
+        'pathway_statistics': {
+            'industry': calculate_summary_stats(industry_paths, years),
+            'petrochem': calculate_summary_stats(petrochem_paths, years)
+        },
+        'validation': {
+            'total_draws': len(validation_results),
+            'industry_valid_count': sum(1 for v in validation_results if v['industry_valid']),
+            'petrochem_valid_count': sum(1 for v in validation_results if v['petrochem_valid']),
+            'mean_industry_error': np.mean([v['industry_budget_error'] for v in validation_results]),
+            'mean_petrochem_error': np.mean([v['petrochem_budget_error'] for v in validation_results])
+        }
+    }
+    
+    # Save mixed analysis summary
+    with open(mixed_output_dir / f'mixed_summary_{timestamp}.json', 'w') as f:
+        json.dump(mixed_summary, f, indent=2, default=str)
+    
+    # Print combined results
+    print_combined_analysis_results(mixed_summary)
+    
+    logger.info(f"Combined analysis completed in {(datetime.now() - start_time).total_seconds():.1f} seconds")
+    logger.info(f"Results saved to: {output_dir.absolute()}")
+    logger.info("Combined analysis includes both separate method analysis AND mixed scenario analysis")
+
+
+def save_mixed_analysis_outputs(output_dir: Path, years: np.ndarray, 
+                               industry_paths: np.ndarray, petrochem_paths: np.ndarray,
+                               industry_quantiles: np.ndarray, petrochem_quantiles: np.ndarray,
+                               quantiles: list, samples: Dict[str, Any], budgets: Dict[str, np.ndarray],
+                               validation_results: list, config: Dict[str, Any]) -> None:
+    """Save outputs for mixed analysis."""
+    
+    # Save raw pathways if requested
+    if config['outputs'].get('save_raw_paths', False):
+        logger.info("Saving mixed analysis raw pathway data...")
+        
+        industry_df = pd.DataFrame(industry_paths, columns=[f'year_{year}' for year in years])
+        industry_df.to_csv(output_dir / 'industry_emission_paths.csv', index=False)
+        
+        petrochem_df = pd.DataFrame(petrochem_paths, columns=[f'year_{year}' for year in years])
+        petrochem_df.to_csv(output_dir / 'petrochem_emission_paths.csv', index=False)
+    
+    # Save quantile data
+    logger.info("Saving mixed analysis quantile data...")
+    quantile_cols = [f'p{int(q*100):02d}' for q in quantiles]
+    
+    industry_quantile_df = pd.DataFrame(industry_quantiles.T, columns=quantile_cols)
+    industry_quantile_df['year'] = years
+    industry_quantile_df.to_csv(output_dir / 'industry_fan_quantiles.csv', index=False)
+    
+    petrochem_quantile_df = pd.DataFrame(petrochem_quantiles.T, columns=quantile_cols)
+    petrochem_quantile_df['year'] = years
+    petrochem_quantile_df.to_csv(output_dir / 'petrochem_fan_quantiles.csv', index=False)
+    
+    # Create visualizations if requested
+    if config['outputs'].get('create_plots', True):
+        logger.info("Creating mixed analysis visualizations...")
+        
+        # Fan charts with mixed theme
+        create_fan_charts(
+            years=years,
+            industry_quantiles=industry_quantiles,
+            petrochem_quantiles=petrochem_quantiles,
+            quantile_levels=quantiles,
+            output_dir=output_dir,
+            config=config,
+            scenario='mixed'  # Use mixed theme
+        )
+        
+        # Uncertainty plots with mixed theme
+        save_uncertainty_plots(
+            samples=samples,
+            budgets=budgets,
+            output_dir=output_dir,
+            scenario='mixed'  # Use mixed theme
+        )
+
+
+def print_combined_analysis_results(mixed_summary: Dict[str, Any]) -> None:
+    """Print results for combined analysis."""
+    
+    print("\n" + "="*80)
+    print("COMBINED ANALYSIS - SEPARATE METHODS + MIXED SCENARIOS RESULTS")
+    print("="*80)
+    
+    meta = mixed_summary['analysis_metadata']
+    print(f"Mixed Analysis completed: {meta['timestamp']}")
+    print(f"Monte Carlo draws: {meta['n_draws']} (success rate: {meta['success_rate']:.1%})")
+    print(f"Total runtime: {meta['runtime_seconds']:.1f} seconds")
+    
+    timeline = mixed_summary['timeline']
+    print(f"Timeline: {timeline['start_year']}-{timeline['end_year']} ({timeline['n_years']} years)")
+    
+    # Print scenario distribution
+    print("\nMIXED SCENARIO DISTRIBUTION:")
+    print("-" * 30)
+    if 'scenario_statistics' in mixed_summary:
+        for scenario, stats in mixed_summary['scenario_statistics'].items():
+            temp_target = "1.5°C" if scenario == "1p5C" else "2.0°C"
+            print(f"{temp_target} scenario: {stats['count']} draws ({stats['proportion']:.1%})")
+    
+    # Print curve type distribution
+    print("\nMIXED CURVE TYPE DISTRIBUTION:")
+    print("-" * 30)
+    if 'curve_type_statistics' in mixed_summary:
+        for curve, stats in mixed_summary['curve_type_statistics'].items():
+            curve_display = {
+                'exp': 'Exponential',
+                'log': 'Logarithmic', 
+                's_curve': 'S-curve'
+            }.get(curve, curve)
+            print(f"{curve_display}: {stats['count']} draws ({stats['proportion']:.1%})")
+    
+    print("\nMIXED BUDGET ALLOCATION RESULTS:")
+    print("-" * 35)
+    
+    for sector in ['industry', 'petrochem']:
+        stats = mixed_summary['budget_statistics'][sector]
+        print(f"\n{sector.upper()} SECTOR (Mixed Analysis):")
+        print(f"  Budget range: {stats['p05']:.2e} - {stats['p95']:.2e} tCO2 (90% CI)")
+        print(f"  Median budget: {stats['median']:.2e} tCO2")
+        print(f"  Coefficient of variation: {stats['cv']:.3f}")
+    
+    print("\nMIXED VALIDATION RESULTS:")
+    print("-" * 25)
+    val = mixed_summary['validation']
+    print(f"Industry pathways valid: {val['industry_valid_count']}/{val['total_draws']} ({val['industry_valid_count']/val['total_draws']:.1%})")
+    print(f"Petrochemical pathways valid: {val['petrochem_valid_count']}/{val['total_draws']} ({val['petrochem_valid_count']/val['total_draws']:.1%})")
+    print(f"Mean budget errors: Industry {val['mean_industry_error']:.3f}%, Petrochemical {val['mean_petrochem_error']:.3f}%")
+    
+    print("\n" + "="*80)
+    print("NOTE: This combined analysis includes:")
+    print("1. Separate method analysis (6 climate-method combinations)")
+    print("2. Mixed scenario analysis (random scenarios + methods per draw)")
+    print("3. Compare individual methods vs mixed approach effectiveness")
+    print("="*80)
 
 
 def print_separate_scenario_results(all_summaries: Dict[str, Dict[str, Any]]) -> None:

@@ -51,21 +51,47 @@ class PathwayComparison:
         
         logger.info(f"PathwayComparison initialized with outputs from {self.outputs_dir}")
     
-    def load_scenario_paths(self, scenario: str) -> pd.DataFrame:
+    def load_scenario_paths(self, scenario: str, method: str = None) -> pd.DataFrame:
         """
-        Load emission paths for a specific scenario.
+        Load emission paths for a specific scenario and method combination.
         
         Args:
             scenario: Either '1.5C' or '2.0C'
+            method: Optional decay method ('exp', 'log', 's_curve', 'mixed')
             
         Returns:
             DataFrame with emission paths (rows=draws, columns=years)
         """
-        scenario_dir = self.outputs_dir / f"scenario_{scenario}"
+        if method and method != 'mixed':
+            # Load specific method results
+            scenario_dir = self.outputs_dir / f"scenario_{scenario}_{method}"
+        elif method == 'mixed':
+            # Load mixed analysis results
+            scenario_dir = self.outputs_dir / "mixed_analysis"
+        else:
+            # Try to load from original separate scenario directory first
+            scenario_dir = self.outputs_dir / f"scenario_{scenario}"
+            
         paths_file = scenario_dir / "industry_emission_paths.csv"
         
         if not paths_file.exists():
-            raise FileNotFoundError(f"Emission paths file not found: {paths_file}")
+            # Fallback: try to find any available method for this scenario
+            fallback_dirs = [
+                self.outputs_dir / f"scenario_{scenario}_exp",
+                self.outputs_dir / f"scenario_{scenario}_log", 
+                self.outputs_dir / f"scenario_{scenario}_s_curve",
+                self.outputs_dir / f"scenario_{scenario}"
+            ]
+            
+            for fallback_dir in fallback_dirs:
+                fallback_file = fallback_dir / "industry_emission_paths.csv"
+                if fallback_file.exists():
+                    paths_file = fallback_file
+                    scenario_dir = fallback_dir
+                    logger.info(f"Using fallback path: {scenario_dir}")
+                    break
+            else:
+                raise FileNotFoundError(f"Emission paths file not found for {scenario} scenario in any available directory")
         
         # Load the CSV file
         df = pd.read_csv(paths_file)
@@ -75,7 +101,8 @@ class PathwayComparison:
         if len(year_columns) != self.n_years:
             logger.warning(f"Expected {self.n_years} years, found {len(year_columns)} in {scenario} data")
         
-        logger.info(f"Loaded {len(df)} emission paths for {scenario} scenario")
+        method_label = f" ({method})" if method else ""
+        logger.info(f"Loaded {len(df)} emission paths for {scenario}{method_label} scenario from {scenario_dir}")
         return df
     
     def create_korean_government_plan(self) -> np.ndarray:
@@ -119,11 +146,43 @@ class PathwayComparison:
         logger.info(f"Created Korean government plan: {emission_2023/1e6:.1f} -> {emission_2030/1e6:.1f} -> {emission_2050/1e6:.1f} MtCO2")
         return gov_pathway
     
-    def load_all_pathways(self):
-        """Load all pathway data for comparison."""
+    def load_all_pathways(self, analysis_type: str = 'auto'):
+        """
+        Load all pathway data for comparison.
+        
+        Args:
+            analysis_type: Type of analysis to load
+                - 'auto': Automatically detect available analysis types
+                - 'separate_methods': Load separate climate-method combinations  
+                - 'mixed': Load mixed scenario analysis
+                - 'basic': Load basic scenario analysis
+        """
         logger.info("Loading all emission pathways...")
         
-        # Load Monte Carlo scenario results
+        if analysis_type == 'auto':
+            # Check what types of analysis are available
+            if (self.outputs_dir / "mixed_analysis").exists():
+                logger.info("Mixed analysis detected - loading comprehensive comparison")
+                self._load_comprehensive_pathways()
+            elif any((self.outputs_dir / f"scenario_1.5C_{method}").exists() for method in ['exp', 'log', 's_curve']):
+                logger.info("Separate methods analysis detected")
+                self._load_separate_methods_pathways()
+            else:
+                logger.info("Basic scenario analysis detected")
+                self._load_basic_pathways()
+        elif analysis_type == 'separate_methods':
+            self._load_separate_methods_pathways()
+        elif analysis_type == 'mixed':
+            self._load_mixed_pathways()
+        else:
+            self._load_basic_pathways()
+        
+        # Always create Korean government plan
+        self.pathways['Korean_Gov'] = self.create_korean_government_plan()
+        logger.info("✓ Created Korean government linear plan")
+    
+    def _load_basic_pathways(self):
+        """Load basic scenario pathways."""
         try:
             self.pathways['1.5C'] = self.load_scenario_paths('1.5C')
             logger.info("✓ Loaded 1.5°C scenario paths")
@@ -137,10 +196,37 @@ class PathwayComparison:
         except FileNotFoundError as e:
             logger.error(f"Could not load 2.0°C scenario: {e}")
             self.pathways['2.0C'] = None
+    
+    def _load_separate_methods_pathways(self):
+        """Load separate method analysis pathways."""
+        methods = ['exp', 'log', 's_curve']
+        scenarios = ['1.5C', '2.0C']
         
-        # Create Korean government plan
-        self.pathways['Korean_Gov'] = self.create_korean_government_plan()
-        logger.info("✓ Created Korean government linear plan")
+        for scenario in scenarios:
+            for method in methods:
+                try:
+                    key = f"{scenario}_{method}"
+                    self.pathways[key] = self.load_scenario_paths(scenario, method)
+                    logger.info(f"✓ Loaded {scenario} {method} paths")
+                except FileNotFoundError as e:
+                    logger.warning(f"Could not load {scenario} {method}: {e}")
+                    self.pathways[key] = None
+    
+    def _load_mixed_pathways(self):
+        """Load mixed analysis pathways."""
+        try:
+            self.pathways['Mixed'] = self.load_scenario_paths('', 'mixed')
+            logger.info("✓ Loaded mixed scenario analysis paths")
+        except FileNotFoundError as e:
+            logger.error(f"Could not load mixed analysis: {e}")
+            self.pathways['Mixed'] = None
+    
+    def _load_comprehensive_pathways(self):
+        """Load comprehensive analysis (separate methods + mixed)."""
+        # Load separate methods
+        self._load_separate_methods_pathways()
+        # Load mixed analysis
+        self._load_mixed_pathways()
     
     def calculate_pathway_statistics(self) -> Dict[str, Any]:
         """
@@ -238,24 +324,45 @@ class PathwayComparison:
         Args:
             save_path: Optional path to save the figure
         """
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle('Industry Emission Pathway Comparison', fontsize=16, fontweight='bold')
+        # Determine the number of pathways for layout
+        n_pathways = len([p for p in self.pathways.values() if p is not None])
+        
+        if n_pathways > 4:
+            # Use larger grid for comprehensive analysis
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle('Comprehensive Industry Emission Pathway Comparison', fontsize=16, fontweight='bold')
+        else:
+            # Use standard 2x2 grid for basic analysis
+            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+            fig.suptitle('Industry Emission Pathway Comparison', fontsize=16, fontweight='bold')
+        
+        axes_flat = axes.flatten()
         
         # Plot 1: Main pathway comparison
-        ax1 = axes[0, 0]
-        self._plot_pathway_comparison(ax1)
+        self._plot_pathway_comparison(axes_flat[0])
         
         # Plot 2: 2035 reduction rates comparison
-        ax2 = axes[0, 1]
-        self._plot_reduction_rates(ax2)
+        self._plot_reduction_rates(axes_flat[1])
         
         # Plot 3: Cumulative emissions comparison
-        ax3 = axes[1, 0]
-        self._plot_cumulative_emissions(ax3)
+        self._plot_cumulative_emissions(axes_flat[2])
         
         # Plot 4: Pathway characteristics table
-        ax4 = axes[1, 1]
-        self._plot_summary_table(ax4)
+        self._plot_summary_table(axes_flat[3])
+        
+        # Additional plots for comprehensive analysis
+        if n_pathways > 4 and len(axes_flat) > 4:
+            # Plot 5: Method comparison (if separate methods available)
+            if any('_exp' in k or '_log' in k or '_s_curve' in k for k in self.pathways.keys()):
+                self._plot_method_comparison(axes_flat[4])
+            else:
+                axes_flat[4].axis('off')
+                
+            # Plot 6: Scenario distribution (if mixed analysis available)  
+            if 'Mixed' in self.pathways:
+                self._plot_scenario_distribution(axes_flat[5])
+            else:
+                axes_flat[5].axis('off')
         
         plt.tight_layout()
         
@@ -268,7 +375,13 @@ class PathwayComparison:
     
     def _plot_pathway_comparison(self, ax):
         """Plot the main pathway comparison."""
-        colors = {'1.5C': '#1f77b4', '2.0C': '#ff7f0e', 'Korean_Gov': '#2ca02c'}
+        # Extended color palette for comprehensive analysis
+        colors = {
+            '1.5C': '#1f77b4', '2.0C': '#ff7f0e', 'Korean_Gov': '#2ca02c',
+            '1.5C_exp': '#1f77b4', '1.5C_log': '#17becf', '1.5C_s_curve': '#9467bd',
+            '2.0C_exp': '#ff7f0e', '2.0C_log': '#ff9896', '2.0C_s_curve': '#ffbb78',
+            'Mixed': '#8c564b'
+        }
         
         for name, pathway_data in self.pathways.items():
             if pathway_data is None:
@@ -277,7 +390,8 @@ class PathwayComparison:
             if name == 'Korean_Gov':
                 # Plot single pathway
                 ax.plot(self.years, pathway_data / 1e6, 
-                       color=colors[name], linewidth=3, label=f'{name} (Linear Plan)', linestyle='--')
+                       color=colors.get(name, '#2ca02c'), linewidth=3, 
+                       label=f'{name} (Linear Plan)', linestyle='--')
             else:
                 # Plot Monte Carlo pathways with uncertainty bands
                 year_cols = [col for col in pathway_data.columns if col.startswith('year_')]
@@ -290,11 +404,23 @@ class PathwayComparison:
                 p75 = np.percentile(pathway_values, 75, axis=0)
                 p95 = np.percentile(pathway_values, 95, axis=0)
                 
-                # Plot uncertainty bands
-                ax.fill_between(self.years, p05/1e6, p95/1e6, alpha=0.2, color=colors[name])
-                ax.fill_between(self.years, p25/1e6, p75/1e6, alpha=0.4, color=colors[name])
-                ax.plot(self.years, p50/1e6, color=colors[name], linewidth=2, 
-                       label=f'{name} Scenario (Median)')
+                # Get color and create label
+                color = colors.get(name, '#333333')
+                if '_' in name:
+                    # Separate method format: "1.5C_exp" -> "1.5°C (Exponential)"
+                    scenario, method = name.split('_', 1)
+                    method_display = {'exp': 'Exponential', 'log': 'Logarithmic', 's_curve': 'S-curve'}.get(method, method)
+                    label = f'{scenario}°C ({method_display})'
+                else:
+                    # Basic format
+                    label = f'{name} Scenario'
+                
+                # Plot uncertainty bands (only for comprehensive analysis)
+                if len(self.pathways) <= 4:
+                    ax.fill_between(self.years, p05/1e6, p95/1e6, alpha=0.2, color=color)
+                    ax.fill_between(self.years, p25/1e6, p75/1e6, alpha=0.4, color=color)
+                
+                ax.plot(self.years, p50/1e6, color=color, linewidth=2, label=label)
         
         ax.set_xlabel('Year')
         ax.set_ylabel('Emissions (MtCO2/year)')
@@ -418,6 +544,62 @@ class PathwayComparison:
             table[(0, i)].set_text_props(weight='bold', color='white')
         
         ax.set_title('Pathway Comparison Summary', fontweight='bold', pad=20)
+    
+    def _plot_method_comparison(self, ax):
+        """Plot comparison of different decay methods."""
+        methods = ['exp', 'log', 's_curve']
+        scenarios = ['1.5C', '2.0C']
+        
+        # Group reduction rates by method
+        method_data = {method: {'1.5C': [], '2.0C': []} for method in methods}
+        
+        for scenario in scenarios:
+            for method in methods:
+                key = f"{scenario}_{method}"
+                if key in self.statistics and self.statistics[key] is not None:
+                    reduction_stats = self.statistics[key].get('reduction_2035_stats')
+                    if reduction_stats:
+                        method_data[method][scenario] = reduction_stats['median']
+        
+        # Create grouped bar chart
+        x = np.arange(len(methods))
+        width = 0.35
+        
+        bars1 = ax.bar(x - width/2, [method_data[m]['1.5C'] for m in methods], 
+                      width, label='1.5°C', color='#1f77b4', alpha=0.7)
+        bars2 = ax.bar(x + width/2, [method_data[m]['2.0C'] for m in methods], 
+                      width, label='2.0°C', color='#ff7f0e', alpha=0.7)
+        
+        ax.set_xlabel('Decay Method')
+        ax.set_ylabel('2035 Reduction Rate (%)')
+        ax.set_title('Method Comparison\n(2035 Reduction Rates)')
+        ax.set_xticks(x)
+        ax.set_xticklabels(['Exponential', 'Logarithmic', 'S-curve'])
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Add value labels
+        for bars in [bars1, bars2]:
+            for bar in bars:
+                height = bar.get_height()
+                if height > 0:
+                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                           f'{height:.1f}%', ha='center', va='bottom', fontsize=8)
+    
+    def _plot_scenario_distribution(self, ax):
+        """Plot scenario and method distribution for mixed analysis."""
+        if 'Mixed' not in self.pathways or self.pathways['Mixed'] is None:
+            ax.text(0.5, 0.5, 'Mixed Analysis\nNot Available', 
+                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
+            ax.axis('off')
+            return
+        
+        # This would require access to the original mixed analysis data
+        # For now, show a placeholder
+        ax.text(0.5, 0.5, 'Mixed Analysis\nDistribution\n(Implementation needed)', 
+               ha='center', va='center', transform=ax.transAxes, fontsize=12)
+        ax.set_title('Mixed Analysis Distribution')
+        ax.axis('off')
     
     def save_results(self, output_file: str = "pathway_comparison_results.json"):
         """

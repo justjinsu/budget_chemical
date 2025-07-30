@@ -7,7 +7,7 @@ seed: 123
 output_dir: outputs
 
 # Scenario processing mode
-scenario_mode: separate  # 'mixed' for random sampling, 'separate' for distinct runs, 'separate_methods' for climate+curve combinations
+scenario_mode: combined  # 'mixed' for random sampling, 'separate' for distinct runs, 'separate_methods' for climate+curve combinations, 'combined' for mixed scenarios+methods
 
 # Global carbon budget scenarios (tCO2) - IPCC scenarios
 global_budget:
@@ -61,6 +61,7 @@ curve_types: ["exp", "log", "s_curve"]
 solver:
   tolerance: 0.001   # Budget matching tolerance (0.1%)
   max_iter: 60      # Maximum iterations for numerical solver
+  end_epsilon: 10000.0  # Minimum emission level (tCO2/year) instead of hard zero
 
 # Output settings
 outputs:
