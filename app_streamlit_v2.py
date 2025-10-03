@@ -415,10 +415,398 @@ elif page == "📊 Calculate Budget":
                     title="Industry Budget Distribution by Scenario")
         st.plotly_chart(fig, use_container_width=True)
 
-# Add other pages (Generate Pathways, Summary Report)...
-else:
-    st.title(f"{page}")
-    st.info("This page is under development. Use 'Configure Allocation Factors' and 'Calculate Budget' for now.")
+# ==================== GENERATE PATHWAYS ====================
+elif page == "📈 Generate Pathways":
+    st.title("📈 Generate Annual Emission Pathways")
+    st.markdown("""
+    Convert your calculated budget into year-by-year emission pathways (2024-2050).
+    Choose from 8 different curve types or compare them all.
+    """)
+
+    # Check if budget exists
+    if 'budget_results' not in st.session_state:
+        st.warning("⚠️ Please calculate budget first (go to '📊 Calculate Budget')")
+        st.info("You can also enter a budget manually below.")
+        use_manual = True
+    else:
+        use_manual = st.checkbox("Use manual budget instead of calculated budget")
+
+    # Budget selection
+    if use_manual:
+        st.sidebar.header("⚙️ Manual Budget Input")
+        budget = st.sidebar.number_input(
+            "Budget (Gt CO₂)",
+            min_value=0.5,
+            max_value=10.0,
+            value=2.14,
+            step=0.1
+        ) * 1e9
+        st.info(f"Using manual budget: {budget/1e9:.2f} Gt CO₂")
+    else:
+        stats = st.session_state.budget_results['statistics']
+        scenario_choice = st.radio(
+            "Select Scenario for Pathway",
+            ["1.5°C Scenario", "2.0°C Scenario", "Mixed (Median)"],
+            horizontal=True
+        )
+
+        if scenario_choice == "1.5°C Scenario":
+            budget = stats['by_scenario']['1p5C']['industry']['median']
+        elif scenario_choice == "2.0°C Scenario":
+            budget = stats['by_scenario']['2p0C']['industry']['median']
+        else:
+            budget = stats['industry']['median']
+
+        st.success(f"✅ Using budget from calculation: {budget/1e9:.2f} Gt CO₂")
+
+    # Pathway settings
+    st.sidebar.header("⚙️ Pathway Settings")
+
+    curve_type = st.sidebar.selectbox(
+        "Curve Type",
+        ["exponential", "logarithmic", "s_curve", "linear", "plateau",
+         "convex", "early_action", "delayed_action"],
+        help="Select emission reduction curve shape"
+    )
+
+    compare_curves = st.sidebar.checkbox("Compare All Curves")
+
+    start_year = st.sidebar.number_input("Start Year", 2020, 2030, 2024)
+    end_year = st.sidebar.number_input("End Year", 2040, 2060, 2050)
+    start_emission = st.sidebar.number_input(
+        "Start Emission (Mt CO₂/year)",
+        50.0, 500.0, 185.0, 1.0
+    ) * 1e6
+
+    # Generate pathway
+    if st.sidebar.button("📈 Generate Pathway", type="primary"):
+        with st.spinner("Generating emission pathway..."):
+            allocator = PathwayAllocator(
+                start_year=start_year,
+                end_year=end_year,
+                start_emission=start_emission,
+                config={'max_annual_reduction_rate': 0.20, 'end_epsilon': 1.0}
+            )
+
+            if compare_curves:
+                comparison = allocator.compare_curves(budget)
+                st.session_state.pathway_comparison = comparison
+                st.session_state.allocator = allocator
+                st.session_state.pathway_budget = budget
+            else:
+                result = allocator.allocate_budget(budget, curve_type, validate=True)
+                st.session_state.pathway_result = result
+                st.session_state.allocator = allocator
+
+        st.success("✅ Pathway generated!")
+
+    # Display results
+    if compare_curves and 'pathway_comparison' in st.session_state:
+        st.subheader("📊 Curve Comparison")
+
+        comparison = st.session_state.pathway_comparison
+        st.dataframe(comparison.style.format({
+            'budget_error_pct': '{:.2f}%',
+            'initial_reduction_pct': '{:.2f}%',
+            'avg_annual_reduction_pct': '{:.2f}%',
+            'final_emission_tco2': '{:.0f}',
+            'cumulative_tco2': '{:.2e}'
+        }), use_container_width=True)
+
+        # Plot all pathways
+        st.subheader("📈 Pathway Comparison Chart")
+
+        fig = go.Figure()
+        allocator = st.session_state.allocator
+        budget = st.session_state.pathway_budget
+
+        for _, row in comparison.iterrows():
+            if row['budget_error_pct'] < 20:  # Only show reasonable matches
+                try:
+                    result = allocator.allocate_budget(budget, row['curve_type'], validate=False)
+                    fig.add_trace(go.Scatter(
+                        x=result['years'],
+                        y=result['pathway'] / 1e6,
+                        name=row['curve_type'],
+                        mode='lines',
+                        line=dict(width=2)
+                    ))
+                except:
+                    pass
+
+        fig.update_layout(
+            title="Emission Pathways - All Curve Types",
+            xaxis_title="Year",
+            yaxis_title="Emissions (Mt CO₂/year)",
+            hovermode='x unified',
+            height=600
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    elif 'pathway_result' in st.session_state:
+        result = st.session_state.pathway_result
+
+        # Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Budget", f"{result['budget_allocated']/1e9:.2f} Gt")
+        with col2:
+            st.metric("Start (2024)", f"{result['pathway'][0]/1e6:.0f} Mt/yr")
+        with col3:
+            st.metric("End (2050)", f"{result['pathway'][-1]/1e3:.1f} kt/yr")
+        with col4:
+            reduction = (1 - result['pathway'][-1]/result['pathway'][0]) * 100
+            st.metric("Reduction", f"{reduction:.1f}%")
+
+        # Validation
+        validation = result['validation']
+        if validation['is_valid']:
+            st.success("✅ Pathway is feasible and valid")
+        else:
+            with st.expander("⚠️ Validation Issues (click to expand)", expanded=False):
+                for issue in validation['issues']:
+                    st.warning(f"• {issue}")
+
+        # Main pathway chart
+        st.subheader(f"📊 {result['curve_type'].title()} Pathway")
+
+        fig = go.Figure()
+
+        # Annual emissions
+        fig.add_trace(go.Scatter(
+            x=result['years'],
+            y=result['pathway'] / 1e6,
+            name='Annual Emissions',
+            mode='lines',
+            line=dict(color='#2171b5', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(33, 113, 181, 0.2)'
+        ))
+
+        fig.update_layout(
+            title=f"Annual Emission Pathway ({result['curve_type'].title()} Curve)",
+            xaxis_title="Year",
+            yaxis_title="Emissions (Mt CO₂/year)",
+            hovermode='x',
+            height=500
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Cumulative chart
+        st.subheader("📈 Cumulative Emissions")
+
+        cumulative = np.cumsum(result['pathway'])
+        fig2 = go.Figure()
+
+        fig2.add_trace(go.Scatter(
+            x=result['years'],
+            y=cumulative / 1e9,
+            name='Cumulative Emissions',
+            mode='lines',
+            line=dict(color='#238b45', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(35, 139, 69, 0.2)'
+        ))
+
+        # Budget line
+        fig2.add_hline(
+            y=result['budget_allocated'] / 1e9,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"Budget: {result['budget_allocated']/1e9:.2f} Gt",
+            annotation_position="right"
+        )
+
+        fig2.update_layout(
+            title="Cumulative Emissions vs Budget",
+            xaxis_title="Year",
+            yaxis_title="Cumulative Emissions (Gt CO₂)",
+            hovermode='x',
+            height=400
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
+
+        # Key milestones
+        st.subheader("🎯 Key Milestones")
+
+        milestones = []
+        pathway = result['pathway']
+        years = result['years']
+
+        # Find when emissions drop below certain thresholds
+        for threshold, label in [(100e6, "100 Mt/yr"), (50e6, "50 Mt/yr"), (10e6, "10 Mt/yr"), (1e6, "1 Mt/yr")]:
+            idx = np.where(pathway <= threshold)[0]
+            if len(idx) > 0:
+                year = years[idx[0]]
+                milestones.append({
+                    'Milestone': f'Below {label}',
+                    'Year': int(year),
+                    'Emission': f'{pathway[idx[0]]/1e6:.1f} Mt/yr'
+                })
+
+        # 2035 midpoint
+        idx_2035 = 11  # 2035 is 11 years from 2024
+        if idx_2035 < len(pathway):
+            milestones.append({
+                'Milestone': '2035 (Midpoint)',
+                'Year': 2035,
+                'Emission': f'{pathway[idx_2035]/1e6:.1f} Mt/yr'
+            })
+
+        st.dataframe(pd.DataFrame(milestones), use_container_width=True, hide_index=True)
+
+        # Export pathway
+        st.subheader("💾 Export Pathway")
+
+        pathway_df = pd.DataFrame({
+            'year': result['years'],
+            'emissions_tco2': result['pathway'],
+            'emissions_mtco2': result['pathway'] / 1e6,
+            'cumulative_gtco2': np.cumsum(result['pathway']) / 1e9
+        })
+
+        col1, col2 = st.columns(2)
+        with col1:
+            csv = pathway_df.to_csv(index=False)
+            st.download_button(
+                "📥 Download CSV",
+                csv,
+                f"pathway_{result['curve_type']}.csv",
+                "text/csv"
+            )
+
+        with col2:
+            json_str = json.dumps({
+                'pathway': result['pathway'].tolist(),
+                'years': result['years'].tolist(),
+                'budget': result['budget_allocated'],
+                'curve_type': result['curve_type'],
+                'validation': result['validation']
+            }, indent=2)
+
+            st.download_button(
+                "📥 Download JSON",
+                json_str,
+                f"pathway_{result['curve_type']}.json",
+                "application/json"
+            )
+
+# ==================== SUMMARY REPORT ====================
+else:  # Summary Report
+    st.title("📋 Summary Report")
+    st.markdown("Complete analysis summary combining all modules.")
+
+    # Check what's available
+    has_factors = 'custom_factors' in st.session_state
+    has_budget = 'budget_results' in st.session_state
+    has_pathway = 'pathway_result' in st.session_state
+
+    if not (has_factors or has_budget or has_pathway):
+        st.info("👈 Complete the workflow first:\n1. Configure Allocation Factors\n2. Calculate Budget\n3. Generate Pathways")
+    else:
+        # Section 1: Allocation Factors
+        if has_factors:
+            st.subheader("1️⃣ Allocation Factors")
+            factors = st.session_state.custom_factors
+
+            summary_df = pd.DataFrame({
+                'Factor': ['Responsibility', 'Capability', 'Equality'],
+                'Your Value': [
+                    f"{factors['responsibility']:.4%}",
+                    f"{factors['capability']:.4%}",
+                    f"{factors['equality']:.4%}"
+                ],
+                'Verified Default': ['1.09%', '1.47%', '0.646%']
+            })
+
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+        # Section 2: Budget Results
+        if has_budget:
+            st.subheader("2️⃣ Carbon Budget Allocation")
+            stats = st.session_state.budget_results['statistics']
+
+            budget_summary = pd.DataFrame({
+                'Sector': ['Korea Total', 'Industry', 'Petrochemical'],
+                'Median (Gt CO₂)': [
+                    stats['korea_total']['median'] / 1e9,
+                    stats['industry']['median'] / 1e9,
+                    stats['petrochem']['median'] / 1e9
+                ],
+                '90% CI Lower': [
+                    stats['korea_total']['p05'] / 1e9,
+                    stats['industry']['p05'] / 1e9,
+                    stats['petrochem']['p05'] / 1e9
+                ],
+                '90% CI Upper': [
+                    stats['korea_total']['p95'] / 1e9,
+                    stats['industry']['p95'] / 1e9,
+                    stats['petrochem']['p95'] / 1e9
+                ]
+            })
+
+            st.dataframe(budget_summary.style.format({
+                'Median (Gt CO₂)': '{:.2f}',
+                '90% CI Lower': '{:.2f}',
+                '90% CI Upper': '{:.2f}'
+            }), use_container_width=True, hide_index=True)
+
+        # Section 3: Pathway Results
+        if has_pathway:
+            st.subheader("3️⃣ Emission Pathway")
+            result = st.session_state.pathway_result
+
+            pathway_summary = pd.DataFrame({
+                'Metric': [
+                    'Curve Type',
+                    'Budget',
+                    'Start Emission (2024)',
+                    'End Emission (2050)',
+                    'Total Reduction',
+                    'Budget Match'
+                ],
+                'Value': [
+                    result['curve_type'].title(),
+                    f"{result['budget_allocated']/1e9:.2f} Gt CO₂",
+                    f"{result['pathway'][0]/1e6:.0f} Mt/yr",
+                    f"{result['pathway'][-1]/1e3:.1f} kt/yr",
+                    f"{(1 - result['pathway'][-1]/result['pathway'][0])*100:.1f}%",
+                    f"{result['validation']['budget_error_pct']:.2f}%"
+                ]
+            })
+
+            st.dataframe(pathway_summary, use_container_width=True, hide_index=True)
+
+        # Generate full report
+        if has_factors and has_budget and has_pathway:
+            st.markdown("---")
+            st.subheader("📄 Export Complete Report")
+
+            if st.button("📥 Generate Full Report (JSON)"):
+                full_report = {
+                    'allocation_factors': st.session_state.custom_factors,
+                    'budget_statistics': st.session_state.budget_results['statistics'],
+                    'pathway': {
+                        'years': st.session_state.pathway_result['years'].tolist(),
+                        'emissions': st.session_state.pathway_result['pathway'].tolist(),
+                        'curve_type': st.session_state.pathway_result['curve_type'],
+                        'validation': st.session_state.pathway_result['validation']
+                    },
+                    'metadata': {
+                        'version': '2.0',
+                        'date': pd.Timestamp.now().isoformat()
+                    }
+                }
+
+                report_json = json.dumps(full_report, indent=2, default=str)
+                st.download_button(
+                    "📥 Download Complete Report",
+                    report_json,
+                    "complete_analysis_report.json",
+                    "application/json"
+                )
 
 # Footer
 st.sidebar.markdown("---")
