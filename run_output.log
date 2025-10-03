@@ -1,0 +1,67 @@
+2025-10-03 18:59:22,780 - __main__ - INFO - Loading configuration from config/mc_config.yaml
+2025-10-03 18:59:22,786 - __main__ - INFO - Initializing Korean Budget Calculator...
+2025-10-03 18:59:22,788 - budget_chemical.modules.budget_calculator - INFO - KoreaBudgetCalculator initialized with seed 123
+2025-10-03 18:59:22,788 - budget_chemical.modules.budget_calculator - INFO - Allocation factors: R=0.0109, C=0.0147, E=0.0065
+2025-10-03 18:59:22,788 - __main__ - INFO - Running Monte Carlo simulation with 100 draws...
+2025-10-03 18:59:22,788 - budget_chemical.modules.budget_calculator - INFO - Running Monte Carlo simulation with 100 draws (mode: mixed)
+2025-10-03 18:59:22,796 - budget_chemical.modules.budget_calculator - INFO - Monte Carlo completed: Korea budget range 4.78e+09 - 1.45e+10 tCO2
+2025-10-03 18:59:22,796 - __main__ - INFO - Exporting results...
+2025-10-03 18:59:22,797 - budget_chemical.modules.budget_calculator - INFO - Statistics saved to outputs/budget_statistics_20251003_185922.json
+2025-10-03 18:59:22,811 - budget_chemical.modules.budget_calculator - INFO - Budget samples saved to outputs/budget_samples_20251003_185922.csv
+2025-10-03 18:59:22,812 - budget_chemical.modules.budget_calculator - INFO - Allocation factors saved to outputs/allocation_factors_20251003_185922.csv
+2025-10-03 18:59:22,812 - budget_chemical.modules.budget_calculator - INFO - Results exported to outputs
+2025-10-03 18:59:22,812 - __main__ - INFO - 
+Running separate scenario analyses...
+2025-10-03 18:59:22,812 - __main__ - INFO - 
+Analyzing 1.5°C scenario...
+2025-10-03 18:59:22,812 - budget_chemical.modules.budget_calculator - INFO - Running 1p5C scenario analysis with 100 draws
+2025-10-03 18:59:22,815 - budget_chemical.modules.budget_calculator - INFO - 1p5C analysis completed
+2025-10-03 18:59:22,816 - __main__ - INFO - 1.5°C results saved to outputs/scenario_1.5C
+2025-10-03 18:59:22,816 - __main__ - INFO - 
+Analyzing 2.0°C scenario...
+2025-10-03 18:59:22,816 - budget_chemical.modules.budget_calculator - INFO - Running 2p0C scenario analysis with 100 draws
+2025-10-03 18:59:22,819 - budget_chemical.modules.budget_calculator - INFO - 2p0C analysis completed
+2025-10-03 18:59:22,820 - __main__ - INFO - 2.0°C results saved to outputs/scenario_2.0C
+2025-10-03 18:59:22,820 - __main__ - INFO - 
+All results saved to: /Users/jinsupark/jinsu-coding/budget_chemical/budget_chemical/outputs
+
+============================================================
+KOREAN CARBON BUDGET CALCULATION RESULTS
+============================================================
+Analysis Date: 20251003_185922
+Monte Carlo Draws: 100
+Scenario Mode: mixed
+
+KOREA TOTAL BUDGET:
+  Mean: 9.00e+09 tCO2
+  Median: 6.74e+09 tCO2
+  90% CI: 4.96e+09 - 1.35e+10 tCO2
+
+INDUSTRY SECTOR BUDGET:
+  Mean: 3.33e+09 tCO2
+  Median: 2.49e+09 tCO2
+  90% CI: 1.83e+09 - 4.99e+09 tCO2
+
+PETROCHEMICAL SECTOR BUDGET:
+  Mean: 3.33e+08 tCO2
+  Median: 2.49e+08 tCO2
+  90% CI: 1.83e+08 - 4.99e+08 tCO2
+
+SCENARIO-SPECIFIC RESULTS:
+
+  1.5°C Scenario (55 draws, 55.0%):
+    Korea Total: 5.78e+09 tCO2
+    Industry: 2.14e+09 tCO2
+    Petrochem: 2.14e+08 tCO2
+
+  2.0°C Scenario (45 draws, 45.0%):
+    Korea Total: 1.29e+10 tCO2
+    Industry: 4.78e+09 tCO2
+    Petrochem: 4.78e+08 tCO2
+
+============================================================
+
+============================================================
+Results saved to: /Users/jinsupark/jinsu-coding/budget_chemical/budget_chemical/outputs
+============================================================
+

@@ -28,21 +28,28 @@ user_weights:
   equality: 0.30        # Per-capita equality factor weight
 
 # Uncertainty distributions for allocation factors
+# VERIFIED DATA SOURCES (Updated 2025-10-02):
+# - Responsibility: Statista 2021 - Korea 1.09% of global cumulative emissions (1850-2021)
+# - Capability: IMF 2023 - Korea GDP PPP $2.7T / World $184.26T = 1.47%
+# - Equality: Worldometer 2024 - Korea 51.7M / World 8.0B = 0.646%
 uncertainty:
   # Responsibility share (historical cumulative emissions share)
+  # Korea emitted ~1.09% of global cumulative CO2 (1850-2021, ~27 Gt of 2500 Gt)
   responsibility:
-    low: 0.0095   # Minimum share
-    mid: 0.0110   # Most likely share
-    high: 0.0128  # Maximum share
-  
-  # Capability share (GDP share) - normal distribution
+    low: 0.0095   # Minimum share (different accounting methods)
+    mid: 0.0109   # Updated to match research (was 0.0110)
+    high: 0.0128  # Maximum share (uncertainty range)
+
+  # Capability share (GDP share, PPP-adjusted) - normal distribution
+  # Korea GDP PPP: $2.7 trillion, World GDP PPP: $184.26 trillion (IMF 2023)
   capability:
-    mu: 0.017     # Mean GDP share
+    mu: 0.0147    # Updated from 0.017 - Mean GDP share (PPP)
     sd_pct: 0.05  # Standard deviation as percentage of mean
-  
-  # Equality share (population share) - normal distribution  
+
+  # Equality share (population share) - normal distribution
+  # Korea population: 51.7M, World population: 8.0B (2024)
   equality:
-    mu: 0.0067    # Mean population share
+    mu: 0.00646   # Updated from 0.0067 - Mean population share
     sd_pct: 0.03  # Standard deviation as percentage of mean
 
 # Sectoral allocation fractions

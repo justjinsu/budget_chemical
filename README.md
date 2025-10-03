@@ -1,397 +1,326 @@
-# Carbon Budget and Industrial Emission Pathway Modeling
+# Korean Carbon Budget Calculator
 
-## Overview
-This repository provides a comprehensive framework for **carbon budget allocation** and **emission reduction pathway modeling** with a focus on industrial and petrochemical sectors. The model integrates data from the World Bank and EDGAR databases, applies sophisticated budget allocation methods using the BKIR (Budget Korea Industrial/Petrochemical) formula, and calculates various emission reduction pathways with uncertainty quantification through Monte Carlo analysis.
+A modular Python tool for calculating Korea's fair share of the global carbon budget using equity-based allocation principles, with verified data sources and Monte Carlo uncertainty quantification.
 
-## Key Features
+## 🌟 Features
 
-### 🎯 Budget Allocation Methods
-- **BKIR Formula Implementation**: Advanced budget allocation using responsibility, capability, and equality factors
-- **Multi-Factor Allocation**: Distributes carbon budgets based on GDP, population, historical emissions, or custom indicators
-- **Sectoral Breakdown**: Specialized allocation for industrial (37%) and petrochemical (10% of industrial) sectors
-- **Inverted Share Options**: Prioritizes countries/sectors with lower emissions or economic capacity
+- **Module 1: Korean Budget Calculator** - Calculate Korea's carbon budget independently
+- **Verified Allocation Factors** - Based on latest data (Statista 2021, IMF 2023, Worldometer 2024)
+- **BKIR Formula** - Three equity principles: Responsibility, Capability, Equality
+- **Monte Carlo Simulation** - Comprehensive uncertainty quantification
+- **Class-Based Architecture** - Clean separation between backend logic and frontend interfaces
+- **Multiple Interfaces** - Command-line, Python API, and interactive Streamlit web app
+- **Dual Climate Scenarios** - 1.5°C and 2.0°C pathways
 
-### 📊 Emission Pathway Calculation
-- **Linear to Zero**: Gradual reduction to zero emissions by target year
-- **Linear Reduction**: Customizable linear reduction rates with flexible target years
-- **Spline Pathway**: Smooth, curved reduction approach with mid-point targets (2030)
-- **Fixed Annual Reduction**: Consistent percentage-based annual reductions
+---
 
-### 🔬 Monte Carlo Uncertainty Analysis
-- **Probabilistic Modeling**: 3000-draw Monte Carlo simulations for uncertainty quantification
-- **Parameter Uncertainty**: Configurable uncertainty distributions for all key parameters
-- **Fan Chart Visualization**: Statistical visualization of emission pathway uncertainties
-- **Quantile Analysis**: P10, P25, P50, P75, P90 quantile outputs for risk assessment
+## 📊 Key Results (Updated with Verified Data)
 
-### 🌐 Data Integration
-- **World Bank API**: Real-time fetching of GDP and population indicators
-- **EDGAR Database**: Comprehensive greenhouse gas emission data processing (CO2, CH4, N2O, F-gases)
-- **Multi-Source Support**: Handles 7+ different EDGAR datasets with automatic cleaning
-- **Flexible Data Pipeline**: Configurable data extraction and processing workflows
+### Korea's Allocation Factors (October 2025)
 
-## Project Structure
+| Factor | Value | Source | Description |
+|--------|-------|--------|-------------|
+| **Responsibility** | 1.09% | Statista 2021 | Historical cumulative CO₂ emissions (1850-2021) |
+| **Capability** | 1.47% | IMF 2023 | GDP share (PPP-adjusted: $2.7T / $184.26T) |
+| **Equality** | 0.646% | Worldometer 2024 | Population share (51.7M / 8.0B) |
+
+### Budget Estimates
+
+**1.5°C Scenario:**
+- Korea Total: **2.14 Gt CO₂** (median)
+- Industry Sector: **791 Mt CO₂**
+- Petrochemical Sector: **79 Mt CO₂**
+
+**2.0°C Scenario:**
+- Korea Total: **4.78 Gt CO₂** (median)
+- Industry Sector: **1.77 Gt CO₂**
+- Petrochemical Sector: **177 Mt CO₂**
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd budget_chemical
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Command-Line Usage
+
+```bash
+# Run budget calculator with default config
+python run_budget_calculator.py config/mc_config.yaml
+
+# Results will be saved to outputs/
+```
+
+### Streamlit Web Interface
+
+```bash
+# Launch interactive web app
+streamlit run app_streamlit.py
+
+# Open browser to http://localhost:8501
+```
+
+### Python API Usage
+
+```python
+from budget_chemical.modules.budget_calculator import KoreaBudgetCalculator
+import yaml
+
+# Load configuration
+with open('config/mc_config.yaml') as f:
+    config = yaml.safe_load(f)
+
+# Initialize calculator
+calculator = KoreaBudgetCalculator(config)
+
+# Run Monte Carlo simulation
+results = calculator.run_monte_carlo(n_draws=1000, scenario_mode='mixed')
+
+# Print summary
+print(calculator.get_summary())
+
+# Export results
+calculator.export_results('outputs/', save_raw=True)
+```
+
+---
+
+## 🏗️ Architecture
+
+### Modular Design
+
+```
+┌─────────────────────────────────────────────────┐
+│         Frontend Interfaces                      │
+│  - CLI (run_budget_calculator.py)               │
+│  - Streamlit (app_streamlit.py)                 │
+│  - Python API (direct class import)             │
+└────────────────┬────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────┐
+│         Backend Modules                          │
+│                                                  │
+│  Module 1: KoreaBudgetCalculator                │
+│  - Monte Carlo sampling                         │
+│  - BKIR formula calculation                     │
+│  - Statistical analysis                         │
+│  - Results export                               │
+│                                                  │
+│  Module 2: PathwayAllocator (Coming Soon)       │
+│  - Annual emission pathways                     │
+│  - Multiple curve types                         │
+│  - Feasibility constraints                      │
+└─────────────────────────────────────────────────┘
+```
+
+### Project Structure
 
 ```
 budget_chemical/
-├── SimpleCarbonBudget.py      # Single-country budget analysis
-├── MultipleCarbonBudget.py    # Multi-country comparative analysis
-├── setup.py                   # Package configuration
-├── LICENSE                    # GNU GPL v3.0 license
-├── data/                      # Input datasets
-│   ├── EDGAR_*.xlsx          # Emission datasets (CO2, CH4, N2O, F-gases)
-│   └── globalbudget.csv      # Global carbon budget scenarios
-├── lib/                       # Core library modules
-│   ├── budgetCalculation.py  # BKIR formula and allocation logic
-│   ├── dataAPI.py            # Data fetching and processing
-│   ├── pathwayCalculation.py # Emission pathway algorithms
-│   ├── utils.py              # Utility functions
-│   └── process.py            # Data processing workflows
-├── budget_chemical/          # Main package
-│   ├── core/                 # Core functionality
-│   │   ├── budget_calculation.py
-│   │   ├── data_api.py
-│   │   ├── pathway_calculation.py
-│   │   └── utils.py
-│   ├── monte_carlo/          # Monte Carlo framework
-│   │   ├── runner.py         # Main Monte Carlo execution
-│   │   ├── sampler.py
-│   │   ├── metrics.py
-│   │   ├── pathway_calculator.py
-│   │   └── visualization.py
-│   └── scripts/              # Standalone scripts
-├── config/                   # Configuration files
-│   └── mc_config.yaml
-├── examples/                 # Debug and example scripts
-├── tests/                    # Test files
-│   └── pathwayCalculation.py # MC-specific pathway calculations
-└── outputs/                  # Generated results and visualizations
-    ├── *_fan_chart.png       # Uncertainty fan charts
-    ├── *_quantiles_*.csv     # Quantile analysis results
-    └── summary_*.json        # Aggregated analysis summaries
+├── README.md                          # This file
+├── requirements.txt                   # Python dependencies
+├── config/
+│   └── mc_config.yaml                # Configuration with verified data
+├── budget_chemical/
+│   └── modules/
+│       ├── __init__.py
+│       └── budget_calculator.py      # Module 1: Budget Calculator
+├── run_budget_calculator.py          # CLI interface
+├── app_streamlit.py                  # Web interface
+└── outputs/                          # Results directory
+    ├── budget_statistics_*.json
+    ├── budget_samples_*.csv
+    └── allocation_factors_*.csv
 ```
 
-## Installation
+---
 
-### Prerequisites
-- Python 3.7 or higher
-- Internet connection for World Bank API access
+## 📐 Methodology
 
-### Setup Instructions
-```bash
-# Clone the repository
-git clone https://github.com/PLANiT-Institute/carbonbudget.git
-cd budget_chemical
+### BKIR Allocation Formula
 
-# Install the package and dependencies
-pip install -e .
+Korea's carbon budget is calculated using:
 
-# Or install dependencies manually
-pip install pandas numpy openpyxl requests scipy matplotlib xlrd pyyaml
+```
+Korea_Budget = Global_Budget × (w_r × δ_r + w_c × δ_c + w_e × δ_e)
 ```
 
-## Usage Guide
+Where:
+- **w_r, w_c, w_e**: User-defined weights (default: 0.3, 0.4, 0.3)
+- **δ_r**: Responsibility share (1.09%)
+- **δ_c**: Capability share (1.47%)
+- **δ_e**: Equality share (0.646%)
 
-### 1. Basic Carbon Budget Analysis
+### Equity Principles
 
-#### Single Country Analysis
-```bash
-python SimpleCarbonBudget.py
-```
-**Configuration Parameters:**
-- `countries`: Target countries (default: ['KOR'])
-- `temp_values`: Temperature scenarios (1.5°C, 1.7°C, 2.0°C)
-- `approach_values`: Allocation method ('NY.GDP.MKTP.PP.KD', 'SP.POP.TOTL', 'CO2')
-- `start_year`, `mid_year`, `end_year`: Pathway timeline (2023-2050)
+1. **Responsibility (Historical Emissions)**
+   - Korea emitted ~27 Gt CO₂ of global cumulative 2,500 Gt (1850-2021)
+   - Accounts for historical contribution to climate change
+   - Source: Statista 2021
 
-#### Multi-Country Comparative Analysis
-```bash
-python MultipleCarbonBudget.py
-```
-**Enhanced Features:**
-- Multiple countries: ['KOR', 'JPN']
-- Accumulated allocation methods
-- Inverted GDP-based allocation
-- Comprehensive pathway comparison
+2. **Capability (Economic Capacity)**
+   - Korea's GDP (PPP): $2.7 trillion
+   - World GDP (PPP): $184.26 trillion
+   - Reflects ability to invest in decarbonization
+   - Source: IMF 2023
 
-### 2. Monte Carlo Uncertainty Analysis
+3. **Equality (Population)**
+   - Korea's population: 51.7 million
+   - World population: 8.0 billion
+   - Represents per-capita fairness
+   - Source: Worldometer 2024
 
-#### Configuration
-Edit `model_D_MC/mc_config.yaml`:
+### Global Budget Scenarios
+
+**1.5°C Scenario** (IPCC AR6):
+- Low (67% probability): 400 Gt CO₂
+- Mid (50% probability): 500 Gt CO₂
+- High (33% probability): 670 Gt CO₂
+
+**2.0°C Scenario** (IPCC AR6):
+- Low (67% probability): 1,050 Gt CO₂
+- Mid (50% probability): 1,150 Gt CO₂
+- High (33% probability): 1,290 Gt CO₂
+
+---
+
+## ⚙️ Configuration
+
+### Default Configuration (`config/mc_config.yaml`)
+
 ```yaml
-n_draws: 3000                    # Number of Monte Carlo draws
-seed: 123                        # Random seed for reproducibility
-curve_type: log                  # Distribution type for uncertainty
+# Monte Carlo settings
+n_draws: 100
+seed: 123
+output_dir: outputs
 
-global_budget:                   # Global carbon budget scenarios (tCO2)
-  low: 450000000000.0
-  mid: 500000000000.0  
-  high: 550000000000.0
+# Global budgets (tCO2)
+global_budget:
+  "1p5C":
+    low: 4.00e11
+    mid: 5.00e11
+    high: 6.70e11
+  "2p0C":
+    low: 1.05e12
+    mid: 1.15e12
+    high: 1.29e12
 
-user_weights:                    # BKIR formula weights
-  responsibility: 0.3            # Historical responsibility factor
-  capability: 0.4                # Economic capability factor  
-  equality: 0.3                  # Per-capita equality factor
+# BKIR weights
+user_weights:
+  responsibility: 0.30
+  capability: 0.40
+  equality: 0.30
 
-uncertainty:                     # Parameter uncertainty distributions
+# Verified allocation factors (Oct 2025)
+uncertainty:
   responsibility:
-    low: 0.009
-    mid: 0.011
-    high: 0.013
+    low: 0.0095
+    mid: 0.0109    # Updated: 1.09% (Statista 2021)
+    high: 0.0128
   capability:
-    mu: 0.017
+    mu: 0.0147     # Updated: 1.47% GDP PPP (IMF 2023)
     sd_pct: 0.05
   equality:
-    mu: 0.0067
+    mu: 0.00646    # Updated: 0.646% population (Worldometer 2024)
     sd_pct: 0.03
 
-industry_fraction: 0.37          # Industry sector allocation (37%)
-petrochem_fraction: 0.10         # Petrochemical fraction of industry (10%)
+# Sector allocation
+industry_fraction: 0.37
+petrochem_fraction: 0.10
 ```
 
-#### Running Monte Carlo Analysis
-```bash
-python run_monte_carlo.py config/mc_config.yaml
-```
+---
 
-**Outputs Generated:**
-- `industry_fan_chart.png`: Industrial sector uncertainty fan chart
-- `petrochem_fan_chart.png`: Petrochemical sector uncertainty fan chart
-- `*_quantiles_*.csv`: Detailed quantile analysis (P10-P90)
-- `summary_*.json`: Aggregated statistics and key metrics
-- `uncertainty_analysis.png`: Comparative uncertainty visualization
+## 📈 Output Files
 
-## Core Components
-
-### 🧮 Budget Calculation (`lib/budgetCalculation.py`)
-**BKIR Formula Implementation:**
-```
-BKIR(j) = B_global(j) × (w_r × δ_r + w_c × δ_c + w_e × δ_e)
-```
-Where:
-- `B_global(j)`: Global carbon budget for scenario j
-- `w_r, w_c, w_e`: User-defined weights for responsibility, capability, equality
-- `δ_r, δ_c, δ_e`: Normalized country factors
-
-**Key Methods:**
-- `calculate_BKIR()`: Core budget allocation using BKIR formula
-- `allocate_industry_petrochem()`: Sectoral budget distribution
-- `get_base_emissions()`: Historical emission baselines
-
-### 📡 Data Management (`lib/dataAPI.py`)
-**World Bank Integration:**
-- `download_worldbank_data()`: Automated API data retrieval
-- `cleanup_wbdata()`: Data standardization and quality control
-
-**EDGAR Processing:**
-- `clean_and_extract()`: Multi-format Excel file processing
-- Handles 7 different EDGAR datasets with varying structures
-- Automatic unit conversion and data validation
-
-### 🛤️ Pathway Calculation (`lib/pathwayCalculation.py`)
-**Algorithm Implementations:**
-- `linear_to_zero()`: Linear reduction to zero emissions
-- `linear_pathway()`: Flexible linear reduction with custom targets
-- `spline_pathway()`: Smooth curved pathways using scipy interpolation
-- `fixed_reduction_pathway()`: Percentage-based annual reductions
-
-### 🎲 Monte Carlo Framework (`model_D_MC/`)
-**Statistical Sampling:**
-- Triangular distributions for bounded parameters
-- Normal distributions for capability factors
-- Log-normal distributions for budget scenarios
-- Correlation handling between parameters
-
-**Performance Metrics:**
-- Emission reduction rates by pathway type
-- Budget utilization efficiency
-- Sectoral allocation optimization
-- Uncertainty decomposition analysis
-
-## Configuration Options
-
-### Data Sources
-```python
-# EDGAR Dataset Configuration
-file_paths = [
-    'data/EDGAR_AR5_GHG_1970_2022.xlsx',    # All GHGs (AR5 GWP)
-    'data/EDGAR_CH4_1970_2022.xlsx',        # Methane emissions
-    'data/EDGAR_CO2bio_1970_2022.xlsx',     # Biogenic CO2
-    'data/EDGAR_F-gases_1990_2022.xlsx',    # Fluorinated gases
-    'data/EDGAR_N2O_1970_2022.xlsx',        # Nitrous oxide
-    'data/IEA_EDGAR_CO2_1970_2022.xlsx'     # Fossil CO2 (IEA-based)
-]
-
-# World Bank Indicators
-indicators = [
-    'SP.POP.TOTL',           # Total population
-    'NY.GDP.MKTP.PP.KD'      # GDP (PPP, constant 2017 international $)
-]
-```
-
-### Filtering Criteria
-```python
-# Analysis Parameters
-countries = ['KOR', 'JPN', 'CHN', 'USA']     # Target countries
-temp_values = [1.5, 1.7, 2.0]                # Temperature scenarios (°C)
-probability_values = [0.5, 0.67, 0.83]       # Probability levels
-approach_values = ['NY.GDP.MKTP.PP.KD']       # Allocation method
-period_values = [2022]                        # Base year for allocation
-```
-
-## Output Formats
-
-### CSV Files
-- **Budget Allocations**: Country-wise carbon budget distributions
-- **Emission Pathways**: Annual emission projections by pathway type
-- **Quantile Analysis**: Statistical uncertainty ranges (P10-P90)
-- **Comparative Analysis**: Multi-country/sector comparisons
-
-### Visualizations
-- **Fan Charts**: Uncertainty visualization with percentile bands
-- **Time Series**: Emission pathway trajectories
-- **Bar Charts**: Budget allocation comparisons
-- **Statistical Plots**: Distribution analysis and sensitivity testing
-
-### JSON Summaries
+### Statistics JSON
 ```json
 {
-  "analysis_date": "2025-07-24",
-  "config": {
-    "n_draws": 3000,
-    "seed": 123,
-    "sectors": ["industry", "petrochem"]
-  },
-  "results": {
-    "industry": {
-      "mean_budget": 1.85e10,
-      "p50_budget": 1.82e10,
-      "uncertainty_range": [1.65e10, 2.05e10]
+  "statistics": {
+    "korea_total": {
+      "mean": 9.00e9,
+      "median": 6.74e9,
+      "p05": 4.96e9,
+      "p95": 1.35e10
     },
-    "petrochem": {
-      "mean_budget": 1.85e9,
-      "p50_budget": 1.82e9,
-      "reduction_needed": 0.63
-    }
+    "industry": {...},
+    "petrochem": {...}
   }
 }
 ```
 
-## Advanced Features
-
-### 🔄 Sub-National Analysis
-The framework supports sub-national and sectoral analysis by:
-1. Modifying budget values to reflect national totals
-2. Applying sector-specific emission factors
-3. Customizing pathway parameters for different industries
-4. Scaling analysis to regional or company levels
-
-### 🎯 Custom Allocation Methods
-Users can implement custom allocation approaches by:
-```python
-# Example: Innovation-based allocation
-def innovation_allocation(data_df, innovation_index):
-    # Custom allocation logic based on innovation capacity
-    shares = calculate_innovation_shares(innovation_index)
-    return apply_allocation(shares, global_budget)
+### Budget Samples CSV
+```csv
+korea_total,industry,petrochem,scenario
+5.2e9,1.9e9,1.9e8,1p5C
+1.3e10,4.8e9,4.8e8,2p0C
 ```
 
-### 📈 Real-time Data Integration
-The system supports real-time updates through:
-- Automated World Bank API polling
-- EDGAR database version checking
-- Dynamic parameter adjustment
-- Continuous model recalibration
+---
 
-## Performance Considerations
+## 🔬 Verification
 
-### Computational Efficiency
-- **Monte Carlo**: ~30 seconds for 3000 draws
-- **Data Processing**: ~5-10 seconds for full EDGAR dataset
-- **Visualization**: ~2-3 seconds per chart generation
-- **Memory Usage**: ~200MB for typical analysis
+### Comparison with Previous Version
 
-### Scaling Recommendations
-- **Large Countries**: Use parallel processing for >10 countries
-- **High-Resolution Pathways**: Consider yearly vs. monthly timesteps
-- **Uncertainty Analysis**: Balance draw count vs. computation time
+| Factor | Old Value | New (Verified) | Change | Impact |
+|--------|-----------|----------------|--------|--------|
+| Responsibility | 1.10% | 1.09% | -0.9% | Minimal |
+| Capability | 1.70% | 1.47% | **-13.5%** | Significant |
+| Equality | 0.67% | 0.646% | -3.6% | Minimal |
 
-## Troubleshooting
+**Key Finding**: The capability factor was **overestimated by 13.5%**, resulting in Korea's budget being overstated by approximately **13%**.
 
-### Common Issues
-1. **World Bank API Timeout**: Check internet connection, retry with exponential backoff
-2. **EDGAR File Format**: Verify Excel file structure, check skip parameters
-3. **Memory Errors**: Reduce Monte Carlo draws or optimize data loading
-4. **Visualization Errors**: Install matplotlib backend, check output directory permissions
+### Budget Impact
 
-### Error Handling
-The framework includes comprehensive error handling for:
-- Missing data files
-- API connectivity issues
-- Invalid parameter combinations
-- Numerical instabilities in pathway calculations
+**1.5°C Scenario:**
+- Old: 2.32 Gt CO₂
+- New: 2.14 Gt CO₂ (-7.8%)
 
-## Contributing
+**2.0°C Scenario:**
+- Old: 5.21 Gt CO₂
+- New: 4.78 Gt CO₂ (-8.3%)
 
-### Development Setup
-```bash
-# Fork the repository
-git clone https://github.com/YOUR_USERNAME/carbonbudget.git
-cd carbonbudget
+---
 
-# Create development environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+## 📚 References
 
-# Install in development mode
-pip install -e .
-pip install pytest black flake8  # Development tools
-```
+### Data Sources
 
-### Testing
-```bash
-# Run unit tests
-python -m pytest tests/
+1. **Global Cumulative Emissions**: Carbon Brief (2021)
+2. **Korea Historical Emissions**: Statista (2021)
+3. **World GDP (PPP)**: IMF (2023)
+4. **Korea GDP (PPP)**: World Economics (2023)
+5. **Global Carbon Budgets**: IPCC AR6 WG1 (2021)
 
-# Run integration tests
-python -m pytest tests/integration/
+### Frameworks
 
-# Check code formatting
-black lib/ model_D_MC/
-flake8 lib/ model_D_MC/
-```
+- UNFCCC Common But Differentiated Responsibilities (CBDR)
+- Paris Agreement Article 2 on equity
+- Climate Equity Reference Calculator methodology
 
-### Contribution Guidelines
-1. **Fork & Branch**: Create feature branches from `main`
-2. **Code Style**: Follow PEP 8, use Black formatter
-3. **Documentation**: Update docstrings and README for new features
-4. **Testing**: Add unit tests for new functionality
-5. **Pull Request**: Provide detailed description of changes
+---
 
-## License
-This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). This ensures the software remains free and open-source, with any derivative works also being licensed under GPL-3.0.
+## 🔄 Changelog
 
-### License Summary
-- ✅ **Freedom to Use**: Run the program for any purpose
-- ✅ **Freedom to Study**: Access and modify source code
-- ✅ **Freedom to Share**: Distribute copies to help others
-- ✅ **Freedom to Improve**: Distribute modified versions
-- ⚠️ **Copyleft Requirement**: Derivative works must use GPL-3.0
+### Version 1.0 (October 2025)
+- ✅ Updated allocation factors with verified data sources
+- ✅ Refactored to class-based modular architecture
+- ✅ Created Module 1: KoreaBudgetCalculator
+- ✅ Added Streamlit web interface
+- ✅ Budget decreased by ~13% due to corrected capability factor
 
-## Citation
-If you use this software in your research, please cite:
-```bibtex
-@software{carbonbudget2024,
-  title={Carbon Budget and Industrial Emission Pathway Modeling Framework},
-  author={Hong, Sanghyun and PLANiT Institute},
-  year={2024},
-  url={https://github.com/PLANiT-Institute/carbonbudget},
-  license={GPL-3.0}
-}
-```
+---
 
-## Contact & Support
-- **Primary Contact**: [sanghyun@planit.institute](mailto:sanghyun@planit.institute)
-- **Institution**: PLANiT Institute
-- **Documentation**: [Project Wiki](https://github.com/PLANiT-Institute/carbonbudget/wiki)
-- **Issues**: [GitHub Issues](https://github.com/PLANiT-Institute/carbonbudget/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/PLANiT-Institute/carbonbudget/discussions)
+**Last Updated**: October 3, 2025
+**Model Version**: 1.0
+**Data Version**: October 2025
