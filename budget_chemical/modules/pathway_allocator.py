@@ -89,6 +89,8 @@ class PathwayAllocator:
         budget: float,
         curve_type: str = 'exponential',
         validate: bool = True,
+        tier: str = 'single',
+        industry_fraction: float = 0.37,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -98,56 +100,128 @@ class PathwayAllocator:
             budget: Total carbon budget (tCO2)
             curve_type: Type of reduction curve
             validate: Whether to validate feasibility
+            tier: 'single' for one pathway, 'two_tier' for national + industry
+            industry_fraction: Fraction of national budget for industry (default: 0.37)
             **kwargs: Additional parameters for specific curves
 
         Returns:
             Dictionary containing:
-                - pathway: Annual emissions (tCO2/year)
+                - pathway: Annual emissions (tCO2/year) - for single tier, this is the main pathway
+                - pathway_national: National-level pathway (if tier='two_tier')
+                - pathway_industry: Industry-level pathway (if tier='two_tier')
                 - years: Year array
                 - budget_allocated: Total budget
+                - budget_national: National budget (if tier='two_tier')
+                - budget_industry: Industry budget (if tier='two_tier')
                 - cumulative: Cumulative emissions
                 - validation: Validation results
                 - parameters: Curve parameters used
+                - milestones: Key year emissions (2035, 2040, 2045, 2050)
         """
         if curve_type not in self.curve_types:
             raise ValueError(f"Unknown curve type '{curve_type}'. "
                            f"Available: {list(self.curve_types.keys())}")
 
-        logger.info(f"Allocating budget {budget:.2e} tCO2 using {curve_type} curve")
+        logger.info(f"Allocating budget {budget:.2e} tCO2 using {curve_type} curve (tier={tier})")
 
-        # Generate pathway using specified curve
-        curve_func = self.curve_types[curve_type]
-        pathway, params = self._optimize_pathway(budget, curve_func, **kwargs)
+        if tier == 'two_tier':
+            # Generate national-level pathway
+            curve_func = self.curve_types[curve_type]
+            pathway_national, params = self._optimize_pathway(budget, curve_func, **kwargs)
 
-        # Calculate cumulative emissions
-        cumulative = np.trapz(pathway, dx=1)
+            # Calculate industry budget and pathway
+            budget_industry = budget * industry_fraction
+            pathway_industry, _ = self._optimize_pathway(budget_industry, curve_func, **kwargs)
 
-        # Validate if requested
-        validation = {}
-        if validate:
-            validation = self._validate_pathway(pathway, budget)
+            # Calculate cumulative emissions
+            cumulative_national = np.trapz(pathway_national, dx=1)
+            cumulative_industry = np.trapz(pathway_industry, dx=1)
 
-        result = {
-            'pathway': pathway,
-            'years': self.years,
-            'budget_allocated': budget,
-            'cumulative_emissions': cumulative,
-            'curve_type': curve_type,
-            'parameters': params,
-            'validation': validation,
-            'metadata': {
-                'start_year': self.start_year,
-                'end_year': self.end_year,
-                'start_emission': self.start_emission,
-                'n_years': self.n_years
+            # Validate if requested
+            validation = {}
+            if validate:
+                validation_national = self._validate_pathway(pathway_national, budget)
+                validation_industry = self._validate_pathway(pathway_industry, budget_industry)
+                validation = {
+                    'national': validation_national,
+                    'industry': validation_industry
+                }
+
+            # Calculate milestones
+            milestones = self._calculate_milestones(pathway_national, pathway_industry)
+
+            result = {
+                'pathway': pathway_national,  # For backward compatibility
+                'pathway_national': pathway_national,
+                'pathway_industry': pathway_industry,
+                'years': self.years,
+                'budget_allocated': budget,
+                'budget_national': budget,
+                'budget_industry': budget_industry,
+                'cumulative_emissions': cumulative_national,
+                'cumulative_industry': cumulative_industry,
+                'curve_type': curve_type,
+                'parameters': params,
+                'validation': validation,
+                'milestones': milestones,
+                'tier': 'two_tier',
+                'industry_fraction': industry_fraction,
+                'metadata': {
+                    'start_year': self.start_year,
+                    'end_year': self.end_year,
+                    'start_emission': self.start_emission,
+                    'n_years': self.n_years
+                }
             }
-        }
 
-        if validate and not validation['is_valid']:
-            logger.warning(f"Pathway validation failed: {validation['issues']}")
+            if validate:
+                if not validation['national']['is_valid']:
+                    logger.warning(f"National pathway validation failed: {validation['national']['issues']}")
+                if not validation['industry']['is_valid']:
+                    logger.warning(f"Industry pathway validation failed: {validation['industry']['issues']}")
 
-        logger.info(f"Pathway generated: cumulative={cumulative:.2e} tCO2, "
-                   f"budget_match={(cumulative/budget - 1)*100:.2f}%")
+            logger.info(f"Two-tier pathway generated: National={cumulative_national:.2e} tCO2, "
+                       f"Industry={cumulative_industry:.2e} tCO2")
+
+        else:  # single tier
+            # Generate pathway using specified curve
+            curve_func = self.curve_types[curve_type]
+            pathway, params = self._optimize_pathway(budget, curve_func, **kwargs)
+
+            # Calculate cumulative emissions
+            cumulative = np.trapz(pathway, dx=1)
+
+            # Validate if requested
+            validation = {}
+            if validate:
+                validation = self._validate_pathway(pathway, budget)
+
+            # Calculate milestones (single pathway)
+            milestones = self._calculate_milestones(pathway, None)
+
+            result = {
+                'pathway': pathway,
+                'years': self.years,
+                'budget_allocated': budget,
+                'cumulative_emissions': cumulative,
+                'curve_type': curve_type,
+                'parameters': params,
+                'validation': validation,
+                'milestones': milestones,
+                'tier': 'single',
+                'metadata': {
+                    'start_year': self.start_year,
+                    'end_year': self.end_year,
+                    'start_emission': self.start_emission,
+                    'n_years': self.n_years
+                }
+            }
+
+            if validate and not validation['is_valid']:
+                logger.warning(f"Pathway validation failed: {validation['issues']}")
+
+            logger.info(f"Pathway generated: cumulative={cumulative:.2e} tCO2, "
+                       f"budget_match={(cumulative/budget - 1)*100:.2f}%")
 
         return result
 
@@ -388,6 +462,51 @@ class PathwayAllocator:
         pathway[-1] = self.end_epsilon
         return pathway
 
+    # ==================== Milestone Calculation ====================
+
+    def _calculate_milestones(
+        self,
+        pathway_national: np.ndarray,
+        pathway_industry: Optional[np.ndarray]
+    ) -> Dict[str, Any]:
+        """
+        Calculate emissions at key milestone years: 2035, 2040, 2045, 2050.
+
+        Args:
+            pathway_national: National-level emission pathway
+            pathway_industry: Industry-level emission pathway (optional)
+
+        Returns:
+            Dictionary with milestone emissions for each pathway
+        """
+        milestone_years = [2035, 2040, 2045, 2050]
+        milestones = {'years': milestone_years}
+
+        # National milestones
+        national_emissions = []
+        for year in milestone_years:
+            if self.start_year <= year <= self.end_year:
+                idx = year - self.start_year
+                national_emissions.append(float(pathway_national[idx]))
+            else:
+                national_emissions.append(None)
+
+        milestones['national'] = national_emissions
+
+        # Industry milestones (if provided)
+        if pathway_industry is not None:
+            industry_emissions = []
+            for year in milestone_years:
+                if self.start_year <= year <= self.end_year:
+                    idx = year - self.start_year
+                    industry_emissions.append(float(pathway_industry[idx]))
+                else:
+                    industry_emissions.append(None)
+
+            milestones['industry'] = industry_emissions
+
+        return milestones
+
     # ==================== Validation ====================
 
     def _validate_pathway(
@@ -494,7 +613,9 @@ class PathwayAllocator:
     def compare_curves(
         self,
         budget: float,
-        curve_types: Optional[List[str]] = None
+        curve_types: Optional[List[str]] = None,
+        tier: str = 'single',
+        industry_fraction: float = 0.37
     ) -> pd.DataFrame:
         """
         Compare multiple curve types for the same budget.
@@ -502,9 +623,11 @@ class PathwayAllocator:
         Args:
             budget: Target carbon budget
             curve_types: List of curve types to compare (or None for all)
+            tier: 'single' or 'two_tier' pathway mode
+            industry_fraction: Fraction of national budget for industry
 
         Returns:
-            DataFrame with comparison metrics
+            DataFrame with comparison metrics including milestones
         """
         if curve_types is None:
             curve_types = list(self.curve_types.keys())
@@ -513,17 +636,27 @@ class PathwayAllocator:
 
         for curve_type in curve_types:
             try:
-                result = self.allocate_budget(budget, curve_type, validate=True)
+                result = self.allocate_budget(
+                    budget, curve_type, validate=True,
+                    tier=tier, industry_fraction=industry_fraction
+                )
 
                 pathway = result['pathway']
-                validation = result['validation']
+
+                # Get validation (handle both single and two-tier)
+                if tier == 'two_tier':
+                    validation = result['validation']['national']
+                else:
+                    validation = result['validation']
 
                 # Calculate metrics
                 initial_reduction = (pathway[0] - pathway[1]) / pathway[0] * 100
                 avg_reduction = np.mean(-np.diff(pathway) / pathway[:-1]) * 100
                 final_emission = pathway[-1]
 
-                results.append({
+                # Extract milestones
+                milestones = result['milestones']
+                row = {
                     'curve_type': curve_type,
                     'is_valid': validation['is_valid'],
                     'budget_error_pct': validation['budget_error_pct'],
@@ -531,7 +664,18 @@ class PathwayAllocator:
                     'avg_annual_reduction_pct': avg_reduction,
                     'final_emission_tco2': final_emission,
                     'cumulative_tco2': result['cumulative_emissions']
-                })
+                }
+
+                # Add milestone emissions (national)
+                for i, year in enumerate(milestones['years']):
+                    row[f'emission_{year}'] = milestones['national'][i]
+
+                # Add industry milestones if two-tier
+                if tier == 'two_tier' and 'industry' in milestones:
+                    for i, year in enumerate(milestones['years']):
+                        row[f'industry_{year}'] = milestones['industry'][i]
+
+                results.append(row)
             except Exception as e:
                 logger.warning(f"Failed to generate {curve_type} pathway: {e}")
 
