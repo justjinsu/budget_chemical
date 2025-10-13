@@ -451,13 +451,20 @@ elif page == "📈 Generate Pathways":
         )
 
         if scenario_choice == "1.5°C Scenario":
-            budget = stats['by_scenario']['1p5C']['industry']['median']
+            budget = stats['by_scenario']['1p5C']['korea_total']['median']
+            industry_preview = stats['by_scenario']['1p5C']['industry']['median']
         elif scenario_choice == "2.0°C Scenario":
-            budget = stats['by_scenario']['2p0C']['industry']['median']
+            budget = stats['by_scenario']['2p0C']['korea_total']['median']
+            industry_preview = stats['by_scenario']['2p0C']['industry']['median']
         else:
-            budget = stats['industry']['median']
+            budget = stats['korea_total']['median']
+            industry_preview = stats['industry']['median']
 
-        st.success(f"✅ Using budget from calculation: {budget/1e9:.2f} Gt CO₂")
+        st.success(
+            "✅ Using national budget from calculation: "
+            f"{budget/1e9:.2f} Gt CO₂\n\n"
+            f"Industry share preview: {industry_preview/1e9:.2f} Gt CO₂"
+        )
 
     # Pathway settings
     st.sidebar.header("⚙️ Pathway Settings")
