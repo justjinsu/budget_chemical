@@ -473,10 +473,40 @@ elif page == "📈 Generate Pathways":
 
     start_year = st.sidebar.number_input("Start Year", 2020, 2030, 2024)
     end_year = st.sidebar.number_input("End Year", 2040, 2060, 2050)
-    start_emission = st.sidebar.number_input(
-        "Start Emission (Mt CO₂/year)",
-        50.0, 500.0, 185.0, 1.0
-    ) * 1e6
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🏭 Sector Allocation")
+    st.sidebar.markdown("Set the fraction of emissions for each sector:")
+
+    # Industry fraction (as % of national)
+    industry_fraction_pct = st.sidebar.slider(
+        "Industry (% of National)",
+        min_value=10.0,
+        max_value=80.0,
+        value=37.0,
+        step=1.0,
+        help="Industry sector's share of national emissions. Default: 37% based on Korea 2024 data"
+    )
+    industry_fraction = industry_fraction_pct / 100
+
+    # Petrochemical fraction (as % of industry)
+    petrochem_fraction_pct = st.sidebar.slider(
+        "Petrochemical (% of Industry)",
+        min_value=1.0,
+        max_value=50.0,
+        value=10.0,
+        step=1.0,
+        help="Petrochemical sector's share of industry emissions. Default: 10%"
+    )
+    petrochem_fraction = petrochem_fraction_pct / 100
+
+    # Show calculated percentages
+    st.sidebar.info(
+        f"**Sector Shares:**\n"
+        f"- Industry: {industry_fraction_pct:.0f}% of National\n"
+        f"- Petrochemical: {petrochem_fraction_pct:.0f}% of Industry\n"
+        f"- Petrochemical: {industry_fraction_pct * petrochem_fraction_pct / 100:.1f}% of National"
+    )
 
     # Generate pathway
     if st.sidebar.button("📈 Generate Pathway", type="primary"):
@@ -484,7 +514,6 @@ elif page == "📈 Generate Pathways":
             # Determine initial emission for national level
             # Assuming Korea's total emission in 2024 is around 600 Mt CO2/year
             national_start_emission = 600e6  # tCO2/year
-            industry_fraction = 0.37  # Industry is 37% of national total
 
             allocator = PathwayAllocator(
                 start_year=start_year,
@@ -496,18 +525,21 @@ elif page == "📈 Generate Pathways":
             if compare_curves:
                 comparison = allocator.compare_curves(
                     budget,
-                    tier='two_tier',
-                    industry_fraction=industry_fraction
+                    tier='three_tier',
+                    industry_fraction=industry_fraction,
+                    petrochem_fraction=petrochem_fraction
                 )
                 st.session_state.pathway_comparison = comparison
                 st.session_state.allocator = allocator
                 st.session_state.pathway_budget = budget
                 st.session_state.industry_fraction = industry_fraction
+                st.session_state.petrochem_fraction = petrochem_fraction
             else:
                 result = allocator.allocate_budget(
                     budget, curve_type, validate=True,
-                    tier='two_tier',
-                    industry_fraction=industry_fraction
+                    tier='three_tier',
+                    industry_fraction=industry_fraction,
+                    petrochem_fraction=petrochem_fraction
                 )
                 st.session_state.pathway_result = result
                 st.session_state.allocator = allocator
@@ -535,11 +567,13 @@ elif page == "📈 Generate Pathways":
                 format_dict[f'emission_{year}'] = '{:.1f}'  # Mt CO2/year
             if f'industry_{year}' in comparison.columns:
                 format_dict[f'industry_{year}'] = '{:.1f}'  # Mt CO2/year
+            if f'petrochem_{year}' in comparison.columns:
+                format_dict[f'petrochem_{year}'] = '{:.1f}'  # Mt CO2/year
 
         # Convert milestone values to Mt for display
         comparison_display = comparison.copy()
         for col in comparison_display.columns:
-            if col.startswith('emission_') or col.startswith('industry_'):
+            if col.startswith('emission_') or col.startswith('industry_') or col.startswith('petrochem_'):
                 comparison_display[col] = comparison_display[col] / 1e6  # tCO2 -> Mt
 
         st.dataframe(comparison_display.style.format(format_dict), use_container_width=True)
@@ -547,7 +581,7 @@ elif page == "📈 Generate Pathways":
         # Show milestone table separately for clarity
         st.subheader("📅 Milestone Emissions by Curve Type")
 
-        st.markdown("**National Level (Mt CO₂/year)**")
+        st.markdown("**🌍 National Level (Mt CO₂/year)**")
         milestone_cols = ['curve_type'] + [f'emission_{year}' for year in [2035, 2040, 2045, 2050]
                                            if f'emission_{year}' in comparison_display.columns]
         if len(milestone_cols) > 1:
@@ -562,7 +596,7 @@ elif page == "📈 Generate Pathways":
                 use_container_width=True
             )
 
-        st.markdown("**Industry Level (Mt CO₂/year)**")
+        st.markdown("**🏭 Industry Level (Mt CO₂/year)**")
         industry_milestone_cols = ['curve_type'] + [f'industry_{year}' for year in [2035, 2040, 2045, 2050]
                                                      if f'industry_{year}' in comparison_display.columns]
         if len(industry_milestone_cols) > 1:
@@ -577,15 +611,31 @@ elif page == "📈 Generate Pathways":
                 use_container_width=True
             )
 
+        st.markdown("**⚗️ Petrochemical Level (Mt CO₂/year)**")
+        petrochem_milestone_cols = ['curve_type'] + [f'petrochem_{year}' for year in [2035, 2040, 2045, 2050]
+                                                      if f'petrochem_{year}' in comparison_display.columns]
+        if len(petrochem_milestone_cols) > 1:
+            st.dataframe(
+                comparison_display[petrochem_milestone_cols].rename(columns={
+                    'curve_type': 'Curve Type',
+                    'petrochem_2035': '2035',
+                    'petrochem_2040': '2040',
+                    'petrochem_2045': '2045',
+                    'petrochem_2050': '2050'
+                }).style.format({col: '{:.1f}' for col in petrochem_milestone_cols[1:]}),
+                use_container_width=True
+            )
+
         # Plot all pathways
         st.subheader("📈 Pathway Comparison Chart")
 
-        # Create two tabs: National and Industry
-        tab_nat, tab_ind = st.tabs(["🌍 National Level", "🏭 Industry Level"])
+        # Create three tabs: National, Industry, and Petrochemical
+        tab_nat, tab_ind, tab_pet = st.tabs(["🌍 National Level", "🏭 Industry Level", "⚗️ Petrochemical Level"])
 
         allocator = st.session_state.allocator
         budget = st.session_state.pathway_budget
         industry_fraction = st.session_state.industry_fraction
+        petrochem_fraction = st.session_state.petrochem_fraction
 
         with tab_nat:
             fig_nat = go.Figure()
@@ -594,7 +644,8 @@ elif page == "📈 Generate Pathways":
                     try:
                         result = allocator.allocate_budget(
                             budget, row['curve_type'], validate=False,
-                            tier='two_tier', industry_fraction=industry_fraction
+                            tier='three_tier', industry_fraction=industry_fraction,
+                            petrochem_fraction=petrochem_fraction
                         )
                         fig_nat.add_trace(go.Scatter(
                             x=result['years'],
@@ -622,7 +673,8 @@ elif page == "📈 Generate Pathways":
                     try:
                         result = allocator.allocate_budget(
                             budget, row['curve_type'], validate=False,
-                            tier='two_tier', industry_fraction=industry_fraction
+                            tier='three_tier', industry_fraction=industry_fraction,
+                            petrochem_fraction=petrochem_fraction
                         )
                         fig_ind.add_trace(go.Scatter(
                             x=result['years'],
@@ -643,14 +695,83 @@ elif page == "📈 Generate Pathways":
             )
             st.plotly_chart(fig_ind, use_container_width=True)
 
+        with tab_pet:
+            fig_pet = go.Figure()
+            for _, row in comparison.iterrows():
+                if row['budget_error_pct'] < 20:  # Only show reasonable matches
+                    try:
+                        result = allocator.allocate_budget(
+                            budget, row['curve_type'], validate=False,
+                            tier='three_tier', industry_fraction=industry_fraction,
+                            petrochem_fraction=petrochem_fraction
+                        )
+                        fig_pet.add_trace(go.Scatter(
+                            x=result['years'],
+                            y=result['pathway_petrochem'] / 1e6,
+                            name=row['curve_type'],
+                            mode='lines',
+                            line=dict(width=2)
+                        ))
+                    except:
+                        pass
+
+            fig_pet.update_layout(
+                title="Petrochemical Emission Pathways - All Curve Types",
+                xaxis_title="Year",
+                yaxis_title="Emissions (Mt CO₂/year)",
+                hovermode='x unified',
+                height=600
+            )
+            st.plotly_chart(fig_pet, use_container_width=True)
+
     elif 'pathway_result' in st.session_state:
         result = st.session_state.pathway_result
 
-        # Check if two-tier or single tier
+        # Check tier type
+        is_three_tier = result.get('tier') == 'three_tier'
         is_two_tier = result.get('tier') == 'two_tier'
 
         # Metrics
-        if is_two_tier:
+        if is_three_tier:
+            st.subheader("📊 Budget Allocation")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🌍 National Budget", f"{result['budget_national']/1e9:.2f} Gt CO₂")
+            with col2:
+                st.metric("🏭 Industry Budget",
+                         f"{result['budget_industry']/1e9:.2f} Gt CO₂",
+                         f"{result['industry_fraction']:.0%} of National")
+            with col3:
+                st.metric("⚗️ Petrochemical Budget",
+                         f"{result['budget_petrochem']/1e6:.0f} Mt CO₂",
+                         f"{result['petrochem_fraction']:.0%} of Industry")
+
+            st.markdown("---")
+
+            # Milestone table
+            st.subheader("📅 Milestone Emissions")
+
+            milestones = result['milestones']
+            milestone_df = pd.DataFrame({
+                'Year': milestones['years'],
+                'National (Mt/yr)': [e/1e6 if e is not None else None for e in milestones['national']],
+                'Industry (Mt/yr)': [e/1e6 if e is not None else None for e in milestones['industry']],
+                'Petrochemical (Mt/yr)': [e/1e6 if e is not None else None for e in milestones['petrochem']]
+            })
+
+            st.dataframe(
+                milestone_df.style.format({
+                    'National (Mt/yr)': '{:.1f}',
+                    'Industry (Mt/yr)': '{:.1f}',
+                    'Petrochemical (Mt/yr)': '{:.2f}'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.markdown("---")
+
+        elif is_two_tier:
             st.subheader("📊 Budget Allocation")
             col1, col2 = st.columns(2)
             with col1:
@@ -694,7 +815,35 @@ elif page == "📈 Generate Pathways":
                 st.metric("Reduction", f"{reduction:.1f}%")
 
         # Validation
-        if is_two_tier:
+        if is_three_tier:
+            validation_nat = result['validation']['national']
+            validation_ind = result['validation']['industry']
+            validation_pet = result['validation']['petrochem']
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if validation_nat['is_valid']:
+                    st.success("✅ National pathway is feasible")
+                else:
+                    with st.expander("⚠️ National Issues", expanded=False):
+                        for issue in validation_nat['issues']:
+                            st.warning(f"• {issue}")
+            with col2:
+                if validation_ind['is_valid']:
+                    st.success("✅ Industry pathway is feasible")
+                else:
+                    with st.expander("⚠️ Industry Issues", expanded=False):
+                        for issue in validation_ind['issues']:
+                            st.warning(f"• {issue}")
+            with col3:
+                if validation_pet['is_valid']:
+                    st.success("✅ Petrochemical pathway is feasible")
+                else:
+                    with st.expander("⚠️ Petrochemical Issues", expanded=False):
+                        for issue in validation_pet['issues']:
+                            st.warning(f"• {issue}")
+
+        elif is_two_tier:
             validation_nat = result['validation']['national']
             validation_ind = result['validation']['industry']
 
@@ -725,7 +874,71 @@ elif page == "📈 Generate Pathways":
         # Main pathway chart
         st.subheader(f"📊 {result['curve_type'].title()} Pathway")
 
-        if is_two_tier:
+        if is_three_tier:
+            # Three charts in tabs
+            tab1, tab2, tab3 = st.tabs(["🌍 National Pathway", "🏭 Industry Pathway", "⚗️ Petrochemical Pathway"])
+
+            with tab1:
+                fig_nat = go.Figure()
+                fig_nat.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=result['pathway_national'] / 1e6,
+                    name='National Emissions',
+                    mode='lines',
+                    line=dict(color='#2171b5', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(33, 113, 181, 0.2)'
+                ))
+                fig_nat.update_layout(
+                    title=f"National Emission Pathway ({result['curve_type'].title()} Curve)",
+                    xaxis_title="Year",
+                    yaxis_title="Emissions (Mt CO₂/year)",
+                    hovermode='x',
+                    height=500
+                )
+                st.plotly_chart(fig_nat, use_container_width=True)
+
+            with tab2:
+                fig_ind = go.Figure()
+                fig_ind.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=result['pathway_industry'] / 1e6,
+                    name='Industry Emissions',
+                    mode='lines',
+                    line=dict(color='#238b45', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(35, 139, 69, 0.2)'
+                ))
+                fig_ind.update_layout(
+                    title=f"Industry Emission Pathway ({result['curve_type'].title()} Curve)",
+                    xaxis_title="Year",
+                    yaxis_title="Emissions (Mt CO₂/year)",
+                    hovermode='x',
+                    height=500
+                )
+                st.plotly_chart(fig_ind, use_container_width=True)
+
+            with tab3:
+                fig_pet = go.Figure()
+                fig_pet.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=result['pathway_petrochem'] / 1e6,
+                    name='Petrochemical Emissions',
+                    mode='lines',
+                    line=dict(color='#d95f02', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(217, 95, 2, 0.2)'
+                ))
+                fig_pet.update_layout(
+                    title=f"Petrochemical Emission Pathway ({result['curve_type'].title()} Curve)",
+                    xaxis_title="Year",
+                    yaxis_title="Emissions (Mt CO₂/year)",
+                    hovermode='x',
+                    height=500
+                )
+                st.plotly_chart(fig_pet, use_container_width=True)
+
+        elif is_two_tier:
             # Two charts side by side or in tabs
             tab1, tab2 = st.tabs(["🌍 National Pathway", "🏭 Industry Pathway"])
 
@@ -792,7 +1005,94 @@ elif page == "📈 Generate Pathways":
         # Cumulative chart
         st.subheader("📈 Cumulative Emissions")
 
-        if is_two_tier:
+        if is_three_tier:
+            tab1, tab2, tab3 = st.tabs(["🌍 National", "🏭 Industry", "⚗️ Petrochemical"])
+
+            with tab1:
+                cumulative_nat = np.cumsum(result['pathway_national'])
+                fig2_nat = go.Figure()
+                fig2_nat.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=cumulative_nat / 1e9,
+                    name='Cumulative National Emissions',
+                    mode='lines',
+                    line=dict(color='#238b45', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(35, 139, 69, 0.2)'
+                ))
+                fig2_nat.add_hline(
+                    y=result['budget_national'] / 1e9,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text=f"Budget: {result['budget_national']/1e9:.2f} Gt",
+                    annotation_position="right"
+                )
+                fig2_nat.update_layout(
+                    title="National Cumulative Emissions vs Budget",
+                    xaxis_title="Year",
+                    yaxis_title="Cumulative Emissions (Gt CO₂)",
+                    hovermode='x',
+                    height=400
+                )
+                st.plotly_chart(fig2_nat, use_container_width=True)
+
+            with tab2:
+                cumulative_ind = np.cumsum(result['pathway_industry'])
+                fig2_ind = go.Figure()
+                fig2_ind.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=cumulative_ind / 1e9,
+                    name='Cumulative Industry Emissions',
+                    mode='lines',
+                    line=dict(color='#d95f02', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(217, 95, 2, 0.2)'
+                ))
+                fig2_ind.add_hline(
+                    y=result['budget_industry'] / 1e9,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text=f"Budget: {result['budget_industry']/1e9:.2f} Gt",
+                    annotation_position="right"
+                )
+                fig2_ind.update_layout(
+                    title="Industry Cumulative Emissions vs Budget",
+                    xaxis_title="Year",
+                    yaxis_title="Cumulative Emissions (Gt CO₂)",
+                    hovermode='x',
+                    height=400
+                )
+                st.plotly_chart(fig2_ind, use_container_width=True)
+
+            with tab3:
+                cumulative_pet = np.cumsum(result['pathway_petrochem'])
+                fig2_pet = go.Figure()
+                fig2_pet.add_trace(go.Scatter(
+                    x=result['years'],
+                    y=cumulative_pet / 1e6,  # Show in Mt for smaller scale
+                    name='Cumulative Petrochemical Emissions',
+                    mode='lines',
+                    line=dict(color='#7570b3', width=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(117, 112, 179, 0.2)'
+                ))
+                fig2_pet.add_hline(
+                    y=result['budget_petrochem'] / 1e6,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text=f"Budget: {result['budget_petrochem']/1e6:.0f} Mt",
+                    annotation_position="right"
+                )
+                fig2_pet.update_layout(
+                    title="Petrochemical Cumulative Emissions vs Budget",
+                    xaxis_title="Year",
+                    yaxis_title="Cumulative Emissions (Mt CO₂)",
+                    hovermode='x',
+                    height=400
+                )
+                st.plotly_chart(fig2_pet, use_container_width=True)
+
+        elif is_two_tier:
             tab1, tab2 = st.tabs(["🌍 National", "🏭 Industry"])
 
             with tab1:
@@ -880,7 +1180,7 @@ elif page == "📈 Generate Pathways":
             st.plotly_chart(fig2, use_container_width=True)
 
         # Additional milestones (threshold-based) - only for single tier
-        if not is_two_tier:
+        if not is_two_tier and not is_three_tier:
             st.subheader("🎯 Additional Milestones")
 
             milestones_extra = []
@@ -904,7 +1204,59 @@ elif page == "📈 Generate Pathways":
         # Export pathway
         st.subheader("💾 Export Pathway")
 
-        if is_two_tier:
+        if is_three_tier:
+            # Export all three pathways
+            pathway_df = pd.DataFrame({
+                'year': result['years'],
+                'national_emissions_tco2': result['pathway_national'],
+                'national_emissions_mtco2': result['pathway_national'] / 1e6,
+                'national_cumulative_gtco2': np.cumsum(result['pathway_national']) / 1e9,
+                'industry_emissions_tco2': result['pathway_industry'],
+                'industry_emissions_mtco2': result['pathway_industry'] / 1e6,
+                'industry_cumulative_gtco2': np.cumsum(result['pathway_industry']) / 1e9,
+                'petrochem_emissions_tco2': result['pathway_petrochem'],
+                'petrochem_emissions_mtco2': result['pathway_petrochem'] / 1e6,
+                'petrochem_cumulative_mtco2': np.cumsum(result['pathway_petrochem']) / 1e6
+            })
+
+            col1, col2 = st.columns(2)
+            with col1:
+                csv = pathway_df.to_csv(index=False)
+                st.download_button(
+                    "📥 Download CSV (All 3 Pathways)",
+                    csv,
+                    f"pathway_threetier_{result['curve_type']}.csv",
+                    "text/csv"
+                )
+
+            with col2:
+                json_str = json.dumps({
+                    'pathway_national': result['pathway_national'].tolist(),
+                    'pathway_industry': result['pathway_industry'].tolist(),
+                    'pathway_petrochem': result['pathway_petrochem'].tolist(),
+                    'years': result['years'].tolist(),
+                    'budget_national': result['budget_national'],
+                    'budget_industry': result['budget_industry'],
+                    'budget_petrochem': result['budget_petrochem'],
+                    'industry_fraction': result['industry_fraction'],
+                    'petrochem_fraction': result['petrochem_fraction'],
+                    'curve_type': result['curve_type'],
+                    'validation': {
+                        'national': result['validation']['national'],
+                        'industry': result['validation']['industry'],
+                        'petrochem': result['validation']['petrochem']
+                    },
+                    'milestones': result['milestones']
+                }, indent=2, default=str)
+
+                st.download_button(
+                    "📥 Download JSON (Complete)",
+                    json_str,
+                    f"pathway_threetier_{result['curve_type']}.json",
+                    "application/json"
+                )
+
+        elif is_two_tier:
             # Export both national and industry pathways
             pathway_df = pd.DataFrame({
                 'year': result['years'],

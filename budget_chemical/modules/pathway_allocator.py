@@ -91,6 +91,7 @@ class PathwayAllocator:
         validate: bool = True,
         tier: str = 'single',
         industry_fraction: float = 0.37,
+        petrochem_fraction: float = 0.10,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -100,19 +101,22 @@ class PathwayAllocator:
             budget: Total carbon budget (tCO2)
             curve_type: Type of reduction curve
             validate: Whether to validate feasibility
-            tier: 'single' for one pathway, 'two_tier' for national + industry
+            tier: 'single', 'two_tier' (national + industry), or 'three_tier' (national + industry + petrochem)
             industry_fraction: Fraction of national budget for industry (default: 0.37)
+            petrochem_fraction: Fraction of industry budget for petrochemical (default: 0.10)
             **kwargs: Additional parameters for specific curves
 
         Returns:
             Dictionary containing:
                 - pathway: Annual emissions (tCO2/year) - for single tier, this is the main pathway
-                - pathway_national: National-level pathway (if tier='two_tier')
-                - pathway_industry: Industry-level pathway (if tier='two_tier')
+                - pathway_national: National-level pathway (if tier='two_tier' or 'three_tier')
+                - pathway_industry: Industry-level pathway (if tier='two_tier' or 'three_tier')
+                - pathway_petrochem: Petrochemical-level pathway (if tier='three_tier')
                 - years: Year array
                 - budget_allocated: Total budget
-                - budget_national: National budget (if tier='two_tier')
-                - budget_industry: Industry budget (if tier='two_tier')
+                - budget_national: National budget (if tier='two_tier' or 'three_tier')
+                - budget_industry: Industry budget (if tier='two_tier' or 'three_tier')
+                - budget_petrochem: Petrochemical budget (if tier='three_tier')
                 - cumulative: Cumulative emissions
                 - validation: Validation results
                 - parameters: Curve parameters used
@@ -124,7 +128,81 @@ class PathwayAllocator:
 
         logger.info(f"Allocating budget {budget:.2e} tCO2 using {curve_type} curve (tier={tier})")
 
-        if tier == 'two_tier':
+        if tier == 'three_tier':
+            # Generate national-level pathway
+            curve_func = self.curve_types[curve_type]
+            pathway_national, params = self._optimize_pathway(budget, curve_func, **kwargs)
+
+            # Calculate industry budget and pathway
+            budget_industry = budget * industry_fraction
+            pathway_industry, _ = self._optimize_pathway(budget_industry, curve_func, **kwargs)
+
+            # Calculate petrochemical budget and pathway
+            budget_petrochem = budget_industry * petrochem_fraction
+            pathway_petrochem, _ = self._optimize_pathway(budget_petrochem, curve_func, **kwargs)
+
+            # Calculate cumulative emissions
+            cumulative_national = np.trapz(pathway_national, dx=1)
+            cumulative_industry = np.trapz(pathway_industry, dx=1)
+            cumulative_petrochem = np.trapz(pathway_petrochem, dx=1)
+
+            # Validate if requested
+            validation = {}
+            if validate:
+                validation_national = self._validate_pathway(pathway_national, budget)
+                validation_industry = self._validate_pathway(pathway_industry, budget_industry)
+                validation_petrochem = self._validate_pathway(pathway_petrochem, budget_petrochem)
+                validation = {
+                    'national': validation_national,
+                    'industry': validation_industry,
+                    'petrochem': validation_petrochem
+                }
+
+            # Calculate milestones
+            milestones = self._calculate_milestones_three_tier(
+                pathway_national, pathway_industry, pathway_petrochem
+            )
+
+            result = {
+                'pathway': pathway_national,  # For backward compatibility
+                'pathway_national': pathway_national,
+                'pathway_industry': pathway_industry,
+                'pathway_petrochem': pathway_petrochem,
+                'years': self.years,
+                'budget_allocated': budget,
+                'budget_national': budget,
+                'budget_industry': budget_industry,
+                'budget_petrochem': budget_petrochem,
+                'cumulative_emissions': cumulative_national,
+                'cumulative_industry': cumulative_industry,
+                'cumulative_petrochem': cumulative_petrochem,
+                'curve_type': curve_type,
+                'parameters': params,
+                'validation': validation,
+                'milestones': milestones,
+                'tier': 'three_tier',
+                'industry_fraction': industry_fraction,
+                'petrochem_fraction': petrochem_fraction,
+                'metadata': {
+                    'start_year': self.start_year,
+                    'end_year': self.end_year,
+                    'start_emission': self.start_emission,
+                    'n_years': self.n_years
+                }
+            }
+
+            if validate:
+                if not validation['national']['is_valid']:
+                    logger.warning(f"National pathway validation failed: {validation['national']['issues']}")
+                if not validation['industry']['is_valid']:
+                    logger.warning(f"Industry pathway validation failed: {validation['industry']['issues']}")
+                if not validation['petrochem']['is_valid']:
+                    logger.warning(f"Petrochemical pathway validation failed: {validation['petrochem']['issues']}")
+
+            logger.info(f"Three-tier pathway generated: National={cumulative_national:.2e} tCO2, "
+                       f"Industry={cumulative_industry:.2e} tCO2, Petrochem={cumulative_petrochem:.2e} tCO2")
+
+        elif tier == 'two_tier':
             # Generate national-level pathway
             curve_func = self.curve_types[curve_type]
             pathway_national, params = self._optimize_pathway(budget, curve_func, **kwargs)
@@ -507,6 +585,58 @@ class PathwayAllocator:
 
         return milestones
 
+    def _calculate_milestones_three_tier(
+        self,
+        pathway_national: np.ndarray,
+        pathway_industry: np.ndarray,
+        pathway_petrochem: np.ndarray
+    ) -> Dict[str, Any]:
+        """
+        Calculate emissions at key milestone years for three-tier structure.
+
+        Args:
+            pathway_national: National-level emission pathway
+            pathway_industry: Industry-level emission pathway
+            pathway_petrochem: Petrochemical-level emission pathway
+
+        Returns:
+            Dictionary with milestone emissions for each pathway
+        """
+        milestone_years = [2035, 2040, 2045, 2050]
+        milestones = {'years': milestone_years}
+
+        # National milestones
+        national_emissions = []
+        for year in milestone_years:
+            if self.start_year <= year <= self.end_year:
+                idx = year - self.start_year
+                national_emissions.append(float(pathway_national[idx]))
+            else:
+                national_emissions.append(None)
+        milestones['national'] = national_emissions
+
+        # Industry milestones
+        industry_emissions = []
+        for year in milestone_years:
+            if self.start_year <= year <= self.end_year:
+                idx = year - self.start_year
+                industry_emissions.append(float(pathway_industry[idx]))
+            else:
+                industry_emissions.append(None)
+        milestones['industry'] = industry_emissions
+
+        # Petrochemical milestones
+        petrochem_emissions = []
+        for year in milestone_years:
+            if self.start_year <= year <= self.end_year:
+                idx = year - self.start_year
+                petrochem_emissions.append(float(pathway_petrochem[idx]))
+            else:
+                petrochem_emissions.append(None)
+        milestones['petrochem'] = petrochem_emissions
+
+        return milestones
+
     # ==================== Validation ====================
 
     def _validate_pathway(
@@ -615,7 +745,8 @@ class PathwayAllocator:
         budget: float,
         curve_types: Optional[List[str]] = None,
         tier: str = 'single',
-        industry_fraction: float = 0.37
+        industry_fraction: float = 0.37,
+        petrochem_fraction: float = 0.10
     ) -> pd.DataFrame:
         """
         Compare multiple curve types for the same budget.
@@ -623,8 +754,9 @@ class PathwayAllocator:
         Args:
             budget: Target carbon budget
             curve_types: List of curve types to compare (or None for all)
-            tier: 'single' or 'two_tier' pathway mode
+            tier: 'single', 'two_tier', or 'three_tier' pathway mode
             industry_fraction: Fraction of national budget for industry
+            petrochem_fraction: Fraction of industry budget for petrochemical
 
         Returns:
             DataFrame with comparison metrics including milestones
@@ -638,13 +770,14 @@ class PathwayAllocator:
             try:
                 result = self.allocate_budget(
                     budget, curve_type, validate=True,
-                    tier=tier, industry_fraction=industry_fraction
+                    tier=tier, industry_fraction=industry_fraction,
+                    petrochem_fraction=petrochem_fraction
                 )
 
                 pathway = result['pathway']
 
-                # Get validation (handle both single and two-tier)
-                if tier == 'two_tier':
+                # Get validation (handle single, two-tier, and three-tier)
+                if tier in ['two_tier', 'three_tier']:
                     validation = result['validation']['national']
                 else:
                     validation = result['validation']
@@ -670,10 +803,15 @@ class PathwayAllocator:
                 for i, year in enumerate(milestones['years']):
                     row[f'emission_{year}'] = milestones['national'][i]
 
-                # Add industry milestones if two-tier
-                if tier == 'two_tier' and 'industry' in milestones:
+                # Add industry milestones if two-tier or three-tier
+                if tier in ['two_tier', 'three_tier'] and 'industry' in milestones:
                     for i, year in enumerate(milestones['years']):
                         row[f'industry_{year}'] = milestones['industry'][i]
+
+                # Add petrochemical milestones if three-tier
+                if tier == 'three_tier' and 'petrochem' in milestones:
+                    for i, year in enumerate(milestones['years']):
+                        row[f'petrochem_{year}'] = milestones['petrochem'][i]
 
                 results.append(row)
             except Exception as e:
