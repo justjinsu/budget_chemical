@@ -92,6 +92,9 @@ class PathwayAllocator:
         tier: str = 'single',
         industry_fraction: float = 0.37,
         petrochem_fraction: float = 0.10,
+        national_start_emission: Optional[float] = None,
+        industry_start_emission: Optional[float] = None,
+        petrochem_start_emission: Optional[float] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -104,6 +107,9 @@ class PathwayAllocator:
             tier: 'single', 'two_tier' (national + industry), or 'three_tier' (national + industry + petrochem)
             industry_fraction: Fraction of national budget for industry (default: 0.37)
             petrochem_fraction: Fraction of industry budget for petrochemical (default: 0.10)
+            national_start_emission: Override starting emission for national pathway
+            industry_start_emission: Override starting emission for industry pathway
+            petrochem_start_emission: Override starting emission for petrochemical pathway
             **kwargs: Additional parameters for specific curves
 
         Returns:
@@ -128,18 +134,29 @@ class PathwayAllocator:
 
         logger.info(f"Allocating budget {budget:.2e} tCO2 using {curve_type} curve (tier={tier})")
 
+        # Resolve starting emissions for each tier
+        national_start = float(national_start_emission) if national_start_emission is not None else float(self.start_emission)
+        industry_start = float(industry_start_emission) if industry_start_emission is not None else national_start * industry_fraction
+        petrochem_start = float(petrochem_start_emission) if petrochem_start_emission is not None else industry_start * petrochem_fraction
+
         if tier == 'three_tier':
             # Generate national-level pathway
             curve_func = self.curve_types[curve_type]
-            pathway_national, params = self._optimize_pathway(budget, curve_func, **kwargs)
+            pathway_national, params = self._optimize_pathway(
+                budget, curve_func, start_emission=national_start, **kwargs
+            )
 
             # Calculate industry budget and pathway
             budget_industry = budget * industry_fraction
-            pathway_industry, _ = self._optimize_pathway(budget_industry, curve_func, **kwargs)
+            pathway_industry, _ = self._optimize_pathway(
+                budget_industry, curve_func, start_emission=industry_start, **kwargs
+            )
 
             # Calculate petrochemical budget and pathway
             budget_petrochem = budget_industry * petrochem_fraction
-            pathway_petrochem, _ = self._optimize_pathway(budget_petrochem, curve_func, **kwargs)
+            pathway_petrochem, _ = self._optimize_pathway(
+                budget_petrochem, curve_func, start_emission=petrochem_start, **kwargs
+            )
 
             # Calculate cumulative emissions
             cumulative_national = np.trapz(pathway_national, dx=1)
@@ -183,10 +200,16 @@ class PathwayAllocator:
                 'tier': 'three_tier',
                 'industry_fraction': industry_fraction,
                 'petrochem_fraction': petrochem_fraction,
+                'start_emission_national': national_start,
+                'start_emission_industry': industry_start,
+                'start_emission_petrochem': petrochem_start,
                 'metadata': {
                     'start_year': self.start_year,
                     'end_year': self.end_year,
-                    'start_emission': self.start_emission,
+                    'start_emission': national_start,
+                    'start_emission_national': national_start,
+                    'start_emission_industry': industry_start,
+                    'start_emission_petrochem': petrochem_start,
                     'n_years': self.n_years
                 }
             }
@@ -205,11 +228,15 @@ class PathwayAllocator:
         elif tier == 'two_tier':
             # Generate national-level pathway
             curve_func = self.curve_types[curve_type]
-            pathway_national, params = self._optimize_pathway(budget, curve_func, **kwargs)
+            pathway_national, params = self._optimize_pathway(
+                budget, curve_func, start_emission=national_start, **kwargs
+            )
 
             # Calculate industry budget and pathway
             budget_industry = budget * industry_fraction
-            pathway_industry, _ = self._optimize_pathway(budget_industry, curve_func, **kwargs)
+            pathway_industry, _ = self._optimize_pathway(
+                budget_industry, curve_func, start_emission=industry_start, **kwargs
+            )
 
             # Calculate cumulative emissions
             cumulative_national = np.trapz(pathway_national, dx=1)
@@ -244,10 +271,14 @@ class PathwayAllocator:
                 'milestones': milestones,
                 'tier': 'two_tier',
                 'industry_fraction': industry_fraction,
+                'start_emission_national': national_start,
+                'start_emission_industry': industry_start,
                 'metadata': {
                     'start_year': self.start_year,
                     'end_year': self.end_year,
-                    'start_emission': self.start_emission,
+                    'start_emission': national_start,
+                    'start_emission_national': national_start,
+                    'start_emission_industry': industry_start,
                     'n_years': self.n_years
                 }
             }
@@ -264,7 +295,9 @@ class PathwayAllocator:
         else:  # single tier
             # Generate pathway using specified curve
             curve_func = self.curve_types[curve_type]
-            pathway, params = self._optimize_pathway(budget, curve_func, **kwargs)
+            pathway, params = self._optimize_pathway(
+                budget, curve_func, start_emission=national_start, **kwargs
+            )
 
             # Calculate cumulative emissions
             cumulative = np.trapz(pathway, dx=1)
@@ -287,10 +320,11 @@ class PathwayAllocator:
                 'validation': validation,
                 'milestones': milestones,
                 'tier': 'single',
+                'start_emission': national_start,
                 'metadata': {
                     'start_year': self.start_year,
                     'end_year': self.end_year,
-                    'start_emission': self.start_emission,
+                    'start_emission': national_start,
                     'n_years': self.n_years
                 }
             }
@@ -303,10 +337,29 @@ class PathwayAllocator:
 
         return result
 
+    def _resolve_start_emission(self, start_emission: Optional[float]) -> float:
+        """
+        Resolve the effective starting emission value for pathway generation.
+
+        Args:
+            start_emission: Optional override for the pathway starting emission.
+
+        Returns:
+            Numeric starting emission value.
+        """
+        if start_emission is None:
+            return float(self.start_emission)
+
+        try:
+            return float(start_emission)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid start_emission value: {start_emission!r}")
+
     def _optimize_pathway(
         self,
         budget: float,
         curve_func: Callable,
+        start_emission: Optional[float] = None,
         **kwargs
     ) -> Tuple[np.ndarray, Dict[str, float]]:
         """
@@ -320,10 +373,13 @@ class PathwayAllocator:
         Returns:
             Tuple of (pathway, parameters)
         """
+        if start_emission is not None:
+            start_emission = self._resolve_start_emission(start_emission)
+
         # Try to find parameter that matches budget
         def budget_error(param):
             try:
-                pathway = curve_func(param, **kwargs)
+                pathway = curve_func(param, start_emission=start_emission, **kwargs)
                 cumulative = np.trapz(pathway, dx=1)
                 return cumulative - budget
             except:
@@ -355,10 +411,10 @@ class PathwayAllocator:
 
         if not success:
             logger.error("Optimization failed, using fallback linear pathway")
-            return self._linear_curve(1.0), {'fallback': True}
+            return self._linear_curve(1.0, start_emission=start_emission), {'fallback': True}
 
         # Generate optimal pathway
-        pathway = curve_func(param_opt, **kwargs)
+        pathway = curve_func(param_opt, start_emission=start_emission, **kwargs)
 
         # Newton-Raphson refinement for better accuracy
         for _ in range(5):
@@ -372,7 +428,7 @@ class PathwayAllocator:
 
             if abs(deriv) > 1e-10:
                 param_opt -= error / deriv
-                pathway = curve_func(param_opt, **kwargs)
+                pathway = curve_func(param_opt, start_emission=start_emission, **kwargs)
 
         params = {'optimized_parameter': float(param_opt)}
 
@@ -380,7 +436,12 @@ class PathwayAllocator:
 
     # ==================== Curve Functions ====================
 
-    def _exponential_curve(self, decay_rate: float, **kwargs) -> np.ndarray:
+    def _exponential_curve(
+        self,
+        decay_rate: float,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Exponential decay curve: E(t) = E0 * exp(-k*t) + epsilon
 
@@ -390,12 +451,18 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)  # Normalized time [0, 1]
-        pathway = self.start_emission * np.exp(-decay_rate * t) + self.end_epsilon
+        pathway = start * np.exp(-decay_rate * t) + self.end_epsilon
         pathway[-1] = self.end_epsilon  # Ensure final value
         return pathway
 
-    def _logarithmic_curve(self, shape_param: float, **kwargs) -> np.ndarray:
+    def _logarithmic_curve(
+        self,
+        shape_param: float,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Logarithmic decay: E(t) = E0 * (1 - log(1 + k*t) / log(1 + k)) + epsilon
 
@@ -407,11 +474,12 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
 
         # Logarithmic decay formula
         decay_factor = np.log(1 + shape_param * t) / np.log(1 + shape_param)
-        pathway = self.start_emission * (1 - decay_factor) + self.end_epsilon
+        pathway = start * (1 - decay_factor) + self.end_epsilon
 
         # Ensure monotonic decrease
         pathway = np.maximum.accumulate(pathway[::-1])[::-1]
@@ -419,7 +487,13 @@ class PathwayAllocator:
 
         return pathway
 
-    def _s_curve(self, inflection_point: float, steepness: float = 10.0, **kwargs) -> np.ndarray:
+    def _s_curve(
+        self,
+        inflection_point: float,
+        steepness: float = 10.0,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         S-curve (logistic function): Slow start, rapid middle, slow end.
 
@@ -432,28 +506,41 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
 
         # Logistic decay
         decay_factor = 1 / (1 + np.exp(-steepness * (t - inflection_point)))
-        pathway = self.start_emission * (1 - decay_factor) + self.end_epsilon
+        pathway = start * (1 - decay_factor) + self.end_epsilon
         pathway[-1] = self.end_epsilon
 
         return pathway
 
-    def _linear_curve(self, _: float = 1.0, **kwargs) -> np.ndarray:
+    def _linear_curve(
+        self,
+        _: float = 1.0,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Linear reduction: E(t) = E0 * (1 - t) + epsilon
 
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = self.start_emission * (1 - t) + self.end_epsilon
+        pathway = start * (1 - t) + self.end_epsilon
         pathway[-1] = self.end_epsilon
         return pathway
 
-    def _plateau_curve(self, plateau_year: float, decay_rate: float = 5.0, **kwargs) -> np.ndarray:
+    def _plateau_curve(
+        self,
+        plateau_year: float,
+        decay_rate: float = 5.0,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Plateau curve: Maintain emissions until plateau_year, then exponential decay.
 
@@ -466,23 +553,29 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
 
         pathway = np.zeros(self.n_years)
         plateau_idx = int(plateau_year * self.n_years)
 
         # Plateau phase
-        pathway[:plateau_idx] = self.start_emission
+        pathway[:plateau_idx] = start
 
         # Decay phase
         t_decay = np.linspace(0, 1, self.n_years - plateau_idx)
-        pathway[plateau_idx:] = (self.start_emission * np.exp(-decay_rate * t_decay) +
-                                self.end_epsilon)
+        pathway[plateau_idx:] = (start * np.exp(-decay_rate * t_decay) +
+                                 self.end_epsilon)
 
         pathway[-1] = self.end_epsilon
         return pathway
 
-    def _convex_curve(self, curvature: float, **kwargs) -> np.ndarray:
+    def _convex_curve(
+        self,
+        curvature: float,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Convex curve: E(t) = E0 * (1 - t^curvature) + epsilon
 
@@ -494,12 +587,18 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = self.start_emission * (1 - t**curvature) + self.end_epsilon
+        pathway = start * (1 - t**curvature) + self.end_epsilon
         pathway[-1] = self.end_epsilon
         return pathway
 
-    def _early_action_curve(self, intensity: float, **kwargs) -> np.ndarray:
+    def _early_action_curve(
+        self,
+        intensity: float,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Early action: Aggressive initial reductions, then plateau.
 
@@ -511,12 +610,18 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = self.start_emission * (0.3 + 0.7 * (1 - t)**intensity) + self.end_epsilon
+        pathway = start * (0.3 + 0.7 * (1 - t)**intensity) + self.end_epsilon
         pathway[-1] = self.end_epsilon
         return pathway
 
-    def _delayed_action_curve(self, delay_fraction: float, **kwargs) -> np.ndarray:
+    def _delayed_action_curve(
+        self,
+        delay_fraction: float,
+        start_emission: Optional[float] = None,
+        **kwargs
+    ) -> np.ndarray:
         """
         Delayed action: Maintain emissions initially, then rapid reduction.
 
@@ -526,15 +631,16 @@ class PathwayAllocator:
         Returns:
             Emission pathway array
         """
+        start = self._resolve_start_emission(start_emission)
         delay_fraction = np.clip(delay_fraction, 0, 0.8)
         t = np.linspace(0, 1, self.n_years)
 
         delay_idx = int(delay_fraction * self.n_years)
-        pathway = np.ones(self.n_years) * self.start_emission
+        pathway = np.ones(self.n_years) * start
 
         # Rapid reduction after delay
         t_reduction = np.linspace(0, 1, self.n_years - delay_idx)
-        pathway[delay_idx:] = (self.start_emission *
+        pathway[delay_idx:] = (start *
                                (1 - t_reduction)**2 + self.end_epsilon)
 
         pathway[-1] = self.end_epsilon

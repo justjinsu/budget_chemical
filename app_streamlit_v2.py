@@ -753,6 +753,18 @@ elif page == "📈 Generate Pathways":
                          f"{result['budget_petrochem']/1e6:.0f} Mt CO₂",
                          f"{result['petrochem_fraction']:.0%} of Industry")
 
+            st.subheader("📍 Baseline Emissions (2024)")
+            nat_start = result['pathway_national'][0]
+            ind_start = result['pathway_industry'][0]
+            pet_start = result['pathway_petrochem'][0]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🌍 National Start", f"{nat_start/1e6:.0f} Mt/yr")
+            with col2:
+                st.metric("🏭 Industry Start", f"{ind_start/1e6:.0f} Mt/yr")
+            with col3:
+                st.metric("⚗️ Petrochemical Start", f"{pet_start/1e6:.1f} Mt/yr")
+
             st.markdown("---")
 
             # Milestone table
@@ -785,6 +797,15 @@ elif page == "📈 Generate Pathways":
                 st.metric("National Budget", f"{result['budget_national']/1e9:.2f} Gt CO₂")
             with col2:
                 st.metric("Industry Budget", f"{result['budget_industry']/1e9:.2f} Gt CO₂ ({result['industry_fraction']:.0%})")
+
+            st.subheader("📍 Baseline Emissions (2024)")
+            nat_start = result['pathway_national'][0]
+            ind_start = result['pathway_industry'][0]
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("🌍 National Start", f"{nat_start/1e6:.0f} Mt/yr")
+            with col2:
+                st.metric("🏭 Industry Start", f"{ind_start/1e6:.0f} Mt/yr")
 
             st.markdown("---")
 
@@ -1406,6 +1427,25 @@ else:  # Summary Report
         if has_pathway:
             st.subheader("3️⃣ Emission Pathway")
             result = st.session_state.pathway_result
+            tier = result.get('tier', 'single')
+            validation = result.get('validation', {})
+
+            primary_path = result.get('pathway_national', result['pathway'])
+            primary_budget = result.get('budget_national', result.get('budget_allocated'))
+            start_primary = float(primary_path[0])
+            end_primary = float(primary_path[-1])
+            reduction_primary = (1 - end_primary / start_primary) * 100 if start_primary else 0.0
+
+            def _format_pct(value):
+                try:
+                    return f"{float(value):.2f}%"
+                except (TypeError, ValueError):
+                    return "N/A"
+
+            if tier in ('two_tier', 'three_tier'):
+                budget_match_pct = validation.get('national', {}).get('budget_error_pct')
+            else:
+                budget_match_pct = validation.get('budget_error_pct')
 
             pathway_summary = pd.DataFrame({
                 'Metric': [
@@ -1418,15 +1458,74 @@ else:  # Summary Report
                 ],
                 'Value': [
                     result['curve_type'].title(),
-                    f"{result['budget_allocated']/1e9:.2f} Gt CO₂",
-                    f"{result['pathway'][0]/1e6:.0f} Mt/yr",
-                    f"{result['pathway'][-1]/1e3:.1f} kt/yr",
-                    f"{(1 - result['pathway'][-1]/result['pathway'][0])*100:.1f}%",
-                    f"{result['validation']['budget_error_pct']:.2f}%"
+                    "N/A" if primary_budget is None else f"{float(primary_budget)/1e9:.2f} Gt CO₂",
+                    f"{start_primary/1e6:.0f} Mt/yr",
+                    f"{end_primary/1e3:.1f} kt/yr",
+                    f"{reduction_primary:.1f}%",
+                    _format_pct(budget_match_pct)
                 ]
             })
 
             st.dataframe(pathway_summary, use_container_width=True, hide_index=True)
+
+            if tier in ('two_tier', 'three_tier'):
+                st.markdown("**Sector Breakdown**")
+
+                sector_rows = []
+                sector_defs = [
+                    ('🌍 National', result.get('pathway_national'), result.get('budget_national'),
+                     validation.get('national', {}))
+                ]
+
+                if tier in ('two_tier', 'three_tier'):
+                    sector_defs.append((
+                        '🏭 Industry',
+                        result.get('pathway_industry'),
+                        result.get('budget_industry'),
+                        validation.get('industry', {})
+                    ))
+
+                if tier == 'three_tier':
+                    sector_defs.append((
+                        '⚗️ Petrochemical',
+                        result.get('pathway_petrochem'),
+                        result.get('budget_petrochem'),
+                        validation.get('petrochem', {})
+                    ))
+
+                for label, pathway, budget_value, val in sector_defs:
+                    if pathway is None:
+                        continue
+                    start_val = float(pathway[0])
+                    end_val = float(pathway[-1])
+                    reduction = (1 - end_val / start_val) * 100 if start_val else 0.0
+                    try:
+                        budget_gt = float(budget_value) / 1e9 if budget_value is not None else np.nan
+                    except (TypeError, ValueError):
+                        budget_gt = np.nan
+
+                    sector_rows.append({
+                        'Sector': label,
+                        'Budget (Gt CO₂)': budget_gt,
+                        'Start (Mt/yr)': start_val / 1e6,
+                        'End (Mt/yr)': end_val / 1e6,
+                        'Reduction (%)': reduction,
+                        'Budget Match (%)': val.get('budget_error_pct')
+                    })
+
+                if sector_rows:
+                    sector_df = pd.DataFrame(sector_rows)
+                    st.dataframe(
+                        sector_df.style.format({
+                            'Budget (Gt CO₂)': '{:.3f}',
+                            'Start (Mt/yr)': '{:.2f}',
+                            'End (Mt/yr)': '{:.2f}',
+                            'Reduction (%)': '{:.1f}',
+                            'Budget Match (%)': '{:.2f}'
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
 
         # Generate full report
         if has_factors and has_budget and has_pathway:
