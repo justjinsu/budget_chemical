@@ -110,6 +110,7 @@ if page == "⚙️ Configure Allocation Factors":
         st.session_state.setdefault(key, value)
 
     st.session_state.setdefault('gdp_method', "PPP-adjusted (Recommended)")
+    st.session_state.setdefault('_last_gdp_method', st.session_state['gdp_method'])
 
     tab1, tab2, tab3 = st.tabs(["📜 Responsibility", "💰 Capability", "👥 Equality"])
 
@@ -179,12 +180,13 @@ if page == "⚙️ Configure Allocation Factors":
         )
 
         prev_method = st.session_state.get('_last_gdp_method')
+        active_preset = st.session_state.get('country_preset', defaults_country)
         if prev_method != gdp_method:
             if "PPP" in gdp_method:
-                st.session_state.country_gdp = defaults_country['gdp_ppp_trillion']
+                st.session_state.country_gdp = active_preset.get('gdp_ppp_trillion', defaults_country['gdp_ppp_trillion'])
                 st.session_state.world_gdp = defaults_world['gdp_ppp_trillion']
             else:
-                st.session_state.country_gdp = defaults_country['gdp_nominal_trillion']
+                st.session_state.country_gdp = active_preset.get('gdp_nominal_trillion', defaults_country['gdp_nominal_trillion'])
                 st.session_state.world_gdp = defaults_world['gdp_nominal_trillion']
             st.session_state['_last_gdp_method'] = gdp_method
 
@@ -363,14 +365,34 @@ if page == "⚙️ Configure Allocation Factors":
 
     with col2:
         if st.button("🔄 Reset to Verified Defaults"):
+            st.session_state.country_cumulative = defaults_country['cumulative_emissions_gt']
+            st.session_state.world_cumulative = defaults_world['cumulative_emissions_gt']
+            st.session_state.country_gdp = defaults_country['gdp_ppp_trillion']
+            st.session_state.world_gdp = defaults_world['gdp_ppp_trillion']
+            st.session_state.country_population = defaults_country['population_million']
+            st.session_state.world_population = defaults_world['population_billion']
+            st.session_state.country_preset = defaults_country
+            st.session_state['gdp_method'] = "PPP-adjusted (Recommended)"
+            st.session_state['_last_gdp_method'] = "PPP-adjusted (Recommended)"
+            st.session_state['weight_responsibility'] = 0.3
+            st.session_state['weight_capability'] = 0.4
+            st.session_state['weight_equality'] = 0.3
+            st.session_state['budget_n_draws'] = 1000
+
             st.session_state.custom_factors = {
                 'responsibility': 0.0109,
                 'capability': 0.0147,
                 'equality': 0.00646
             }
+            for key in ['_factor_signature', 'budget_results', 'pathway_result', 'pathway_comparison',
+                        '_weight_signature', 'bkir_weights', 'allocator', 'pathway_budget',
+                        'industry_fraction', 'petrochem_fraction', '_trigger_budget_run',
+                        '_trigger_pathway_run']:
+                st.session_state.pop(key, None)
             st.rerun()
 
     if st.button("Next: Calculate Budget", type="primary"):
+        st.session_state['_trigger_budget_run'] = True
         st.session_state.nav_page = "📊 Calculate Budget"
         st.rerun()
 
@@ -402,13 +424,40 @@ elif page == "📊 Calculate Budget":
 
     # Budget calculation settings
     st.sidebar.header("⚙️ Budget Settings")
-    n_draws = st.sidebar.slider("Monte Carlo Draws", 100, 5000, 1000)
+    n_draws = st.sidebar.slider(
+        "Monte Carlo Draws",
+        100,
+        5000,
+        value=st.session_state.get('budget_n_draws', 1000),
+        key="budget_n_draws"
+    )
 
     # Weights
     st.sidebar.subheader("BKIR Weights")
-    weight_r = st.sidebar.slider("Responsibility Weight", 0.0, 1.0, 0.3, 0.05)
-    weight_c = st.sidebar.slider("Capability Weight", 0.0, 1.0, 0.4, 0.05)
-    weight_e = st.sidebar.slider("Equality Weight", 0.0, 1.0, 0.3, 0.05)
+    weight_r = st.sidebar.slider(
+        "Responsibility Weight",
+        0.0,
+        1.0,
+        value=st.session_state.get('weight_responsibility', 0.3),
+        step=0.05,
+        key="weight_responsibility"
+    )
+    weight_c = st.sidebar.slider(
+        "Capability Weight",
+        0.0,
+        1.0,
+        value=st.session_state.get('weight_capability', 0.4),
+        step=0.05,
+        key="weight_capability"
+    )
+    weight_e = st.sidebar.slider(
+        "Equality Weight",
+        0.0,
+        1.0,
+        value=st.session_state.get('weight_equality', 0.3),
+        step=0.05,
+        key="weight_equality"
+    )
 
     total_weight = weight_r + weight_c + weight_e
     if abs(total_weight - 1.0) > 0.01:
@@ -434,12 +483,8 @@ elif page == "📊 Calculate Budget":
         st.session_state['_weight_signature'] = weight_signature
         st.session_state.bkir_weights = normalized_weights
 
-    # Run calculation
-    if st.sidebar.button("🚀 Calculate Budget", type="primary"):
-        if normalized_weights is None:
-            st.warning("⚠️ Unable to calculate budget. Please adjust BKIR weights.")
-            st.stop()
-
+    def run_budget_calculation(auto_trigger: bool = False) -> None:
+        """Execute Monte Carlo budget calculation."""
         config = {
             'seed': 123,
             'n_draws': n_draws,
@@ -471,7 +516,8 @@ elif page == "📊 Calculate Budget":
             'petrochem_fraction': 0.10
         }
 
-        with st.spinner("Running Monte Carlo simulation..."):
+        spinner_msg = "Auto-running Monte Carlo simulation..." if auto_trigger else "Running Monte Carlo simulation..."
+        with st.spinner(spinner_msg):
             calculator = KoreaBudgetCalculator(config)
             results = calculator.run_monte_carlo(n_draws=n_draws, scenario_mode='mixed')
 
@@ -483,7 +529,26 @@ elif page == "📊 Calculate Budget":
         }
         st.session_state.pop('pathway_result', None)
         st.session_state.pop('pathway_comparison', None)
-        st.success("✅ Budget calculated with your custom factors!")
+        st.session_state.pop('_trigger_budget_run', None)
+
+        if auto_trigger:
+            st.info("✅ Budget automatically recalculated with the latest settings.")
+        else:
+            st.success("✅ Budget calculated with your custom factors!")
+
+    # Run calculation (manual trigger)
+    if st.sidebar.button("🚀 Calculate Budget", type="primary"):
+        if normalized_weights is None:
+            st.warning("⚠️ Unable to calculate budget. Please adjust BKIR weights.")
+        else:
+            run_budget_calculation(auto_trigger=False)
+
+    # Automatic calculation trigger (e.g., after completing previous step)
+    if st.session_state.get('_trigger_budget_run') and normalized_weights is not None:
+        run_budget_calculation(auto_trigger=True)
+    elif st.session_state.get('_trigger_budget_run'):
+        # Clear trigger if weights are not yet valid
+        st.session_state.pop('_trigger_budget_run', None)
 
     # Display results
     if 'budget_results' in st.session_state:
@@ -526,6 +591,7 @@ elif page == "📊 Calculate Budget":
         st.plotly_chart(fig, use_container_width=True)
 
         if st.button("Next: Generate Pathways", type="primary"):
+            st.session_state['_trigger_pathway_run'] = True
             st.session_state.nav_page = "📈 Generate Pathways"
             st.rerun()
 
@@ -541,9 +607,14 @@ elif page == "📈 Generate Pathways":
     if 'budget_results' not in st.session_state:
         st.warning("⚠️ Please calculate budget first (go to '📊 Calculate Budget')")
         st.info("You can also enter a budget manually below.")
+        st.session_state['pathway_use_manual'] = True
         use_manual = True
     else:
-        use_manual = st.checkbox("Use manual budget instead of calculated budget")
+        use_manual = st.checkbox(
+            "Use manual budget instead of calculated budget",
+            value=st.session_state.get('pathway_use_manual', False),
+            key="pathway_use_manual"
+        )
 
     # Budget selection
     if use_manual:
@@ -552,16 +623,19 @@ elif page == "📈 Generate Pathways":
             "Budget (Gt CO₂)",
             min_value=0.5,
             max_value=10.0,
-            value=2.14,
-            step=0.1
+            value=st.session_state.get('manual_budget_gt', 2.14),
+            step=0.1,
+            key="manual_budget_gt"
         ) * 1e9
         st.info(f"Using manual budget: {budget/1e9:.2f} Gt CO₂")
     else:
         stats = st.session_state.budget_results['statistics']
+        st.session_state.setdefault('pathway_scenario', "Mixed (Median)")
         scenario_choice = st.radio(
             "Select Scenario for Pathway",
             ["1.5°C Scenario", "2.0°C Scenario", "Mixed (Median)"],
-            horizontal=True
+            horizontal=True,
+            key="pathway_scenario"
         )
 
         if scenario_choice == "1.5°C Scenario":
@@ -583,17 +657,36 @@ elif page == "📈 Generate Pathways":
     # Pathway settings
     st.sidebar.header("⚙️ Pathway Settings")
 
+    curve_options = ["exponential", "logarithmic", "s_curve", "linear", "plateau",
+                     "convex", "early_action", "delayed_action"]
+    default_curve = st.session_state.get('pathway_curve_type', curve_options[0])
     curve_type = st.sidebar.selectbox(
         "Curve Type",
-        ["exponential", "logarithmic", "s_curve", "linear", "plateau",
-         "convex", "early_action", "delayed_action"],
-        help="Select emission reduction curve shape"
+        curve_options,
+        index=curve_options.index(default_curve) if default_curve in curve_options else 0,
+        help="Select emission reduction curve shape",
+        key="pathway_curve_type"
     )
 
-    compare_curves = st.sidebar.checkbox("Compare All Curves")
-
-    start_year = st.sidebar.number_input("Start Year", 2020, 2030, 2024)
-    end_year = st.sidebar.number_input("End Year", 2040, 2060, 2050)
+    compare_curves = st.sidebar.checkbox(
+        "Compare All Curves",
+        value=st.session_state.get('pathway_compare_curves', False),
+        key="pathway_compare_curves"
+    )
+    start_year = st.sidebar.number_input(
+        "Start Year",
+        2020,
+        2030,
+        value=st.session_state.get('pathway_start_year', 2024),
+        key="pathway_start_year"
+    )
+    end_year = st.sidebar.number_input(
+        "End Year",
+        2040,
+        2060,
+        value=st.session_state.get('pathway_end_year', 2050),
+        key="pathway_end_year"
+    )
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("🏭 Sector Allocation")
@@ -604,9 +697,10 @@ elif page == "📈 Generate Pathways":
         "Industry (% of National)",
         min_value=10.0,
         max_value=80.0,
-        value=37.0,
+        value=st.session_state.get('industry_fraction_pct', 37.0),
         step=1.0,
-        help="Industry sector's share of national emissions. Default: 37% based on Korea 2024 data"
+        help="Industry sector's share of national emissions. Default: 37% based on Korea 2024 data",
+        key="industry_fraction_pct"
     )
     industry_fraction = industry_fraction_pct / 100
 
@@ -615,9 +709,10 @@ elif page == "📈 Generate Pathways":
         "Petrochemical (% of Industry)",
         min_value=1.0,
         max_value=50.0,
-        value=10.0,
+        value=st.session_state.get('petrochem_fraction_pct', 10.0),
         step=1.0,
-        help="Petrochemical sector's share of industry emissions. Default: 10%"
+        help="Petrochemical sector's share of industry emissions. Default: 10%",
+        key="petrochem_fraction_pct"
     )
     petrochem_fraction = petrochem_fraction_pct / 100
 
@@ -630,11 +725,11 @@ elif page == "📈 Generate Pathways":
     )
 
     # Generate pathway
-    if st.sidebar.button("📈 Generate Pathway", type="primary"):
-        with st.spinner("Generating emission pathway..."):
-            # Determine initial emission for national level
-            # Assuming Korea's total emission in 2024 is around 600 Mt CO2/year
-            national_start_emission = 600e6  # tCO2/year
+    def run_pathway_generation(auto_trigger: bool = False) -> None:
+        """Generate pathways or comparisons based on current settings."""
+        spinner_msg = "Auto-generating emission pathway..." if auto_trigger else "Generating emission pathway..."
+        with st.spinner(spinner_msg):
+            national_start_emission = 600e6  # tCO2/year baseline assumption
 
             allocator = PathwayAllocator(
                 start_year=start_year,
@@ -651,21 +746,48 @@ elif page == "📈 Generate Pathways":
                     petrochem_fraction=petrochem_fraction
                 )
                 st.session_state.pathway_comparison = comparison
-                st.session_state.allocator = allocator
+                st.session_state.pathway_result = None
                 st.session_state.pathway_budget = budget
                 st.session_state.industry_fraction = industry_fraction
                 st.session_state.petrochem_fraction = petrochem_fraction
             else:
                 result = allocator.allocate_budget(
-                    budget, curve_type, validate=True,
+                    budget,
+                    curve_type,
+                    validate=True,
                     tier='three_tier',
                     industry_fraction=industry_fraction,
                     petrochem_fraction=petrochem_fraction
                 )
                 st.session_state.pathway_result = result
-                st.session_state.allocator = allocator
+                st.session_state.pathway_comparison = None
+                st.session_state.pathway_budget = budget
+                st.session_state.industry_fraction = industry_fraction
+                st.session_state.petrochem_fraction = petrochem_fraction
 
-        st.success("✅ Pathway generated!")
+            st.session_state.allocator = allocator
+            st.session_state.pathway_settings = {
+                'use_manual': use_manual,
+                'start_year': start_year,
+                'end_year': end_year,
+                'curve_type': curve_type,
+                'compare_curves': compare_curves,
+                'industry_fraction_pct': industry_fraction_pct,
+                'petrochem_fraction_pct': petrochem_fraction_pct
+            }
+
+        st.session_state.pop('_trigger_pathway_run', None)
+
+        if auto_trigger:
+            st.info("✅ Pathway automatically generated with the latest settings.")
+        else:
+            st.success("✅ Pathway generated!")
+
+    if st.sidebar.button("📈 Generate Pathway", type="primary"):
+        run_pathway_generation(auto_trigger=False)
+
+    if st.session_state.get('_trigger_pathway_run'):
+        run_pathway_generation(auto_trigger=True)
 
     # Display results
     if compare_curves and 'pathway_comparison' in st.session_state:
@@ -1489,9 +1611,12 @@ else:  # Summary Report
     # Check what's available
     has_factors = 'custom_factors' in st.session_state
     has_budget = 'budget_results' in st.session_state
-    has_pathway = 'pathway_result' in st.session_state
+    pathway_result = st.session_state.get('pathway_result')
+    pathway_comparison = st.session_state.get('pathway_comparison')
+    has_pathway = pathway_result is not None
+    has_pathway_data = has_pathway or (pathway_comparison is not None)
 
-    if not (has_factors or has_budget or has_pathway):
+    if not (has_factors or has_budget or has_pathway_data):
         st.info("👈 Complete the workflow first:\n1. Configure Allocation Factors\n2. Calculate Budget\n3. Generate Pathways")
     else:
         # Section 1: Allocation Factors
@@ -1561,7 +1686,7 @@ else:  # Summary Report
         # Section 3: Pathway Results
         if has_pathway:
             st.subheader("3️⃣ Emission Pathway")
-            result = st.session_state.pathway_result
+            result = pathway_result
             tier = result.get('tier', 'single')
             validation = result.get('validation', {})
 
@@ -1661,6 +1786,13 @@ else:  # Summary Report
                         use_container_width=True,
                         hide_index=True
                     )
+        elif pathway_comparison is not None:
+            st.subheader("3️⃣ Emission Pathway Comparison")
+            st.dataframe(
+                pathway_comparison,
+                use_container_width=True
+            )
+            st.info("ℹ️ Detailed sector pathways are available in the comparison view on the Generate Pathways tab.")
 
         # Generate full report
         if has_factors and has_budget and has_pathway:
