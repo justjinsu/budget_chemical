@@ -38,13 +38,17 @@ st.set_page_config(
 if 'allocation_calc' not in st.session_state:
     st.session_state.allocation_calc = AllocationCalculator()
 
+if 'nav_page' not in st.session_state:
+    st.session_state.nav_page = "⚙️ Configure Allocation Factors"
+
 # Sidebar navigation
 st.sidebar.title("🌍 Carbon Budget Tool V2")
 st.sidebar.markdown("**NEW**: Customizable Allocation Factors!")
 
 page = st.sidebar.radio(
     "Select Module:",
-    ["⚙️ Configure Allocation Factors", "📊 Calculate Budget", "📈 Generate Pathways", "📋 Summary Report"]
+    ["⚙️ Configure Allocation Factors", "📊 Calculate Budget", "📈 Generate Pathways", "📋 Summary Report"],
+    key="nav_page"
 )
 
 st.sidebar.markdown("---")
@@ -63,7 +67,8 @@ if page == "⚙️ Configure Allocation Factors":
         country_preset = st.selectbox(
             "Load Country Preset",
             ["KOR (Korea - Default)", "USA (United States)", "CHN (China)",
-             "IND (India)", "DEU (Germany)", "JPN (Japan)", "Custom"]
+             "IND (India)", "DEU (Germany)", "JPN (Japan)", "Custom"],
+            key="country_preset_select"
         )
 
     with col2:
@@ -71,13 +76,40 @@ if page == "⚙️ Configure Allocation Factors":
             country_code = country_preset.split()[0]
             if country_code != "Custom":
                 preset = st.session_state.allocation_calc.get_preset_country(country_code)
+                st.session_state.country_cumulative = preset.get('cumulative_emissions_gt', st.session_state.country_cumulative)
+                active_method = st.session_state.get('gdp_method', "PPP-adjusted (Recommended)")
+                if "PPP" in active_method:
+                    st.session_state.country_gdp = preset.get('gdp_ppp_trillion', st.session_state.country_gdp)
+                    st.session_state.world_gdp = defaults_world['gdp_ppp_trillion']
+                else:
+                    st.session_state.country_gdp = preset.get('gdp_nominal_trillion', st.session_state.country_gdp)
+                    st.session_state.world_gdp = defaults_world['gdp_nominal_trillion']
+                st.session_state.country_population = preset.get('population_million', st.session_state.country_population)
                 st.session_state.country_preset = preset
                 st.success(f"✅ Loaded {country_code} preset!")
+                st.rerun()
 
     st.markdown("---")
 
     # Three columns for three factors
     st.subheader("Customize Allocation Factors")
+
+    defaults_country = AllocationCalculator.DEFAULT_VALUES['korea']
+    defaults_world = AllocationCalculator.DEFAULT_VALUES['world']
+
+    base_state = {
+        'country_cumulative': defaults_country['cumulative_emissions_gt'],
+        'world_cumulative': defaults_world['cumulative_emissions_gt'],
+        'country_gdp': defaults_country['gdp_ppp_trillion'],
+        'world_gdp': defaults_world['gdp_ppp_trillion'],
+        'country_population': defaults_country['population_million'],
+        'world_population': defaults_world['population_billion'],
+    }
+
+    for key, value in base_state.items():
+        st.session_state.setdefault(key, value)
+
+    st.session_state.setdefault('gdp_method', "PPP-adjusted (Recommended)")
 
     tab1, tab2, tab3 = st.tabs(["📜 Responsibility", "💰 Capability", "👥 Equality"])
 
@@ -94,9 +126,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "Cumulative Emissions (Gt CO₂, 1850-2021)",
                 min_value=0.1,
                 max_value=1000.0,
-                value=27.0,
+                value=st.session_state.country_cumulative,
                 step=0.1,
-                help="Korea default: 27.0 Gt (Source: Statista 2021)"
+                help="Korea default: 27.0 Gt (Source: Statista 2021)",
+                key="country_cumulative"
             )
             st.caption("🔍 Source: Statista 2021, Global Carbon Project")
 
@@ -106,9 +139,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "World Cumulative Emissions (Gt CO₂, 1850-2021)",
                 min_value=1000.0,
                 max_value=5000.0,
-                value=2500.0,
+                value=st.session_state.world_cumulative,
                 step=10.0,
-                help="Default: 2,500 Gt (Source: Carbon Brief 2021)"
+                help="Default: 2,500 Gt (Source: Carbon Brief 2021)",
+                key="world_cumulative"
             )
             st.caption("🔍 Source: Carbon Brief 2021, IPCC AR6")
 
@@ -137,7 +171,22 @@ if page == "⚙️ Configure Allocation Factors":
         st.markdown("### Capability Factor (Economic Capacity)")
         st.info("**Formula**: Country GDP / World GDP (PPP-adjusted recommended)")
 
-        gdp_method = st.radio("GDP Method", ["PPP-adjusted (Recommended)", "Nominal"], horizontal=True)
+        gdp_method = st.radio(
+            "GDP Method",
+            ["PPP-adjusted (Recommended)", "Nominal"],
+            horizontal=True,
+            key="gdp_method"
+        )
+
+        prev_method = st.session_state.get('_last_gdp_method')
+        if prev_method != gdp_method:
+            if "PPP" in gdp_method:
+                st.session_state.country_gdp = defaults_country['gdp_ppp_trillion']
+                st.session_state.world_gdp = defaults_world['gdp_ppp_trillion']
+            else:
+                st.session_state.country_gdp = defaults_country['gdp_nominal_trillion']
+                st.session_state.world_gdp = defaults_world['gdp_nominal_trillion']
+            st.session_state['_last_gdp_method'] = gdp_method
 
         col1, col2 = st.columns(2)
 
@@ -147,9 +196,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "GDP (Trillion USD, 2023)",
                 min_value=0.1,
                 max_value=50.0,
-                value=2.7,
+                value=st.session_state.country_gdp,
                 step=0.1,
-                help="Korea GDP PPP: 2.7 trillion USD (Source: IMF 2023)"
+                help="Korea GDP PPP: 2.7 trillion USD (Source: IMF 2023)",
+                key="country_gdp"
             )
             st.caption("🔍 Source: IMF World Economic Outlook 2023")
 
@@ -159,9 +209,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "World GDP (Trillion USD, 2023)",
                 min_value=100.0,
                 max_value=300.0,
-                value=184.26 if "PPP" in gdp_method else 105.69,
+                value=st.session_state.world_gdp,
                 step=1.0,
-                help="World GDP PPP: 184.26 trillion USD (Source: IMF 2023)"
+                help="World GDP PPP: 184.26 trillion USD (Source: IMF 2023)",
+                key="world_gdp"
             )
             st.caption("🔍 Source: IMF World Economic Outlook 2023")
 
@@ -198,9 +249,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "Population (Millions, 2024)",
                 min_value=0.1,
                 max_value=2000.0,
-                value=51.7,
+                value=st.session_state.country_population,
                 step=0.1,
-                help="Korea population: 51.7 million (Source: Worldometer 2024)"
+                help="Korea population: 51.7 million (Source: Worldometer 2024)",
+                key="country_population"
             )
             st.caption("🔍 Source: UN Population Division, Worldometer 2024")
 
@@ -210,9 +262,10 @@ if page == "⚙️ Configure Allocation Factors":
                 "World Population (Billions, 2024)",
                 min_value=6.0,
                 max_value=10.0,
-                value=8.0,
+                value=st.session_state.world_population,
                 step=0.1,
-                help="World population: 8.0 billion (Source: UN 2024)"
+                help="World population: 8.0 billion (Source: UN 2024)",
+                key="world_population"
             )
             st.caption("🔍 Source: UN World Population Prospects 2024")
 
@@ -237,7 +290,7 @@ if page == "⚙️ Configure Allocation Factors":
             st.warning(f"⚠️ Differs from verified value by {diff:+.1f}% (verified: {verified_eq:.4%})")
 
     # Store in session state
-    st.session_state.custom_factors = {
+    custom_factors = {
         'responsibility': resp_share,
         'capability': cap_share,
         'equality': eq_share,
@@ -250,8 +303,30 @@ if page == "⚙️ Configure Allocation Factors":
             'cumulative_emissions_gt': world_cumulative,
             'gdp_ppp_trillion': world_gdp,
             'population_billion': world_pop
-        }
+        },
+        'gdp_method': gdp_method
     }
+    st.session_state.custom_factors = custom_factors
+
+    factor_signature = (
+        round(resp_share, 8),
+        round(cap_share, 8),
+        round(eq_share, 8),
+        round(country_cumulative, 4),
+        round(world_cumulative, 4),
+        round(country_gdp, 4),
+        round(world_gdp, 4),
+        round(country_pop, 4),
+        round(world_pop, 4),
+        gdp_method
+    )
+
+    previous_signature = st.session_state.get('_factor_signature')
+    if previous_signature is not None and previous_signature != factor_signature:
+        st.session_state.pop('budget_results', None)
+        st.session_state.pop('pathway_result', None)
+        st.session_state.pop('pathway_comparison', None)
+    st.session_state['_factor_signature'] = factor_signature
 
     # Summary panel
     st.markdown("---")
@@ -295,6 +370,10 @@ if page == "⚙️ Configure Allocation Factors":
             }
             st.rerun()
 
+    if st.button("Next: Calculate Budget", type="primary"):
+        st.session_state.nav_page = "📊 Calculate Budget"
+        st.rerun()
+
 # ==================== CALCULATE BUDGET ====================
 elif page == "📊 Calculate Budget":
     st.title("📊 Calculate Carbon Budget")
@@ -335,8 +414,32 @@ elif page == "📊 Calculate Budget":
     if abs(total_weight - 1.0) > 0.01:
         st.sidebar.warning(f"Weights sum to {total_weight:.2f}, will be normalized")
 
+    if total_weight <= 0:
+        st.sidebar.error("At least one BKIR weight must be greater than zero.")
+        normalized_weights = None
+    else:
+        normalized_weights = {
+            'responsibility': weight_r / total_weight,
+            'capability': weight_c / total_weight,
+            'equality': weight_e / total_weight
+        }
+
+        weight_signature = tuple(round(normalized_weights[k], 6) for k in ['responsibility', 'capability', 'equality'])
+        previous_weight_signature = st.session_state.get('_weight_signature')
+        if previous_weight_signature is not None and previous_weight_signature != weight_signature:
+            st.session_state.pop('budget_results', None)
+            st.session_state.pop('pathway_result', None)
+            st.session_state.pop('pathway_comparison', None)
+
+        st.session_state['_weight_signature'] = weight_signature
+        st.session_state.bkir_weights = normalized_weights
+
     # Run calculation
     if st.sidebar.button("🚀 Calculate Budget", type="primary"):
+        if normalized_weights is None:
+            st.warning("⚠️ Unable to calculate budget. Please adjust BKIR weights.")
+            st.stop()
+
         config = {
             'seed': 123,
             'n_draws': n_draws,
@@ -345,9 +448,9 @@ elif page == "📊 Calculate Budget":
                 '2p0C': {'low': 1.05e12, 'mid': 1.15e12, 'high': 1.29e12}
             },
             'user_weights': {
-                'responsibility': weight_r / total_weight,
-                'capability': weight_c / total_weight,
-                'equality': weight_e / total_weight
+                'responsibility': normalized_weights['responsibility'],
+                'capability': normalized_weights['capability'],
+                'equality': normalized_weights['equality']
             },
             'uncertainty': {
                 'responsibility': {
@@ -373,6 +476,13 @@ elif page == "📊 Calculate Budget":
             results = calculator.run_monte_carlo(n_draws=n_draws, scenario_mode='mixed')
 
         st.session_state.budget_results = results
+        st.session_state.last_budget_inputs = {
+            'custom_factors': custom_factors,
+            'weights': normalized_weights,
+            'n_draws': n_draws
+        }
+        st.session_state.pop('pathway_result', None)
+        st.session_state.pop('pathway_comparison', None)
         st.success("✅ Budget calculated with your custom factors!")
 
     # Display results
@@ -414,6 +524,10 @@ elif page == "📊 Calculate Budget":
                     color='Scenario',
                     title="Industry Budget Distribution by Scenario")
         st.plotly_chart(fig, use_container_width=True)
+
+        if st.button("Next: Generate Pathways", type="primary"):
+            st.session_state.nav_page = "📈 Generate Pathways"
+            st.rerun()
 
 # ==================== GENERATE PATHWAYS ====================
 elif page == "📈 Generate Pathways":
@@ -1363,6 +1477,10 @@ elif page == "📈 Generate Pathways":
                     "application/json"
                 )
 
+        if st.button("Next: Summary Report", type="primary"):
+            st.session_state.nav_page = "📋 Summary Report"
+            st.rerun()
+
 # ==================== SUMMARY REPORT ====================
 else:  # Summary Report
     st.title("📋 Summary Report")
@@ -1422,6 +1540,23 @@ else:  # Summary Report
                 '90% CI Lower': '{:.2f}',
                 '90% CI Upper': '{:.2f}'
             }), use_container_width=True, hide_index=True)
+
+            if 'bkir_weights' in st.session_state:
+                weights = st.session_state.bkir_weights
+                weight_df = pd.DataFrame({
+                    'Weight': ['Responsibility', 'Capability', 'Equality'],
+                    'Share (%)': [
+                        weights['responsibility'] * 100,
+                        weights['capability'] * 100,
+                        weights['equality'] * 100
+                    ]
+                })
+                st.markdown("**BKIR Weighting**")
+                st.dataframe(
+                    weight_df.style.format({'Share (%)': '{:.2f}'}),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
         # Section 3: Pathway Results
         if has_pathway:
