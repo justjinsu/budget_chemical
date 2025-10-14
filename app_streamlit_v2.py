@@ -61,6 +61,9 @@ if page == "⚙️ Configure Allocation Factors":
     **denominators** (global values). Our verified research values are loaded as defaults.
     """)
 
+    defaults_country = AllocationCalculator.DEFAULT_VALUES['korea']
+    defaults_world = AllocationCalculator.DEFAULT_VALUES['world']
+
     # Country preset selector
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -93,9 +96,6 @@ if page == "⚙️ Configure Allocation Factors":
 
     # Three columns for three factors
     st.subheader("Customize Allocation Factors")
-
-    defaults_country = AllocationCalculator.DEFAULT_VALUES['korea']
-    defaults_world = AllocationCalculator.DEFAULT_VALUES['world']
 
     base_state = {
         'country_cumulative': defaults_country['cumulative_emissions_gt'],
