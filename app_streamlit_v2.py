@@ -507,7 +507,9 @@ elif page == "📊 Calculate Budget":
                     'mu': custom_factors['equality'],
                     'sd_pct': 0.03
                 }
-            }
+            },
+            'industry_fraction': st.session_state.get('industry_fraction', 0.37),
+            'petrochem_fraction': st.session_state.get('petrochem_fraction', 0.10)
         }
 
         spinner_msg = "Auto-running Monte Carlo simulation..." if auto_trigger else "Running Monte Carlo simulation..."
