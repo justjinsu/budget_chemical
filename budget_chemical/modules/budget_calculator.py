@@ -59,8 +59,9 @@ class KoreaBudgetCalculator:
         self.global_budget_cfg = config['global_budget']
         self.weights_cfg = config['user_weights']
         self.uncertainty_cfg = config['uncertainty']
-        self.industry_fraction = config['industry_fraction']
-        self.petrochem_fraction = config['petrochem_fraction']
+        # Sector fractions optional; keep None when not provided
+        self.industry_fraction = config.get('industry_fraction')
+        self.petrochem_fraction = config.get('petrochem_fraction')
 
         # Setup probability distributions
         self._setup_distributions()
@@ -150,8 +151,17 @@ class KoreaBudgetCalculator:
         korea_total = global_budget * weighted_factor
 
         # Allocate to sectors
-        industry_budget = korea_total * self.industry_fraction
-        petrochem_budget = industry_budget * self.petrochem_fraction
+        industry_budget = (
+            korea_total * self.industry_fraction
+            if self.industry_fraction is not None
+            else None
+        )
+
+        petrochem_budget = (
+            industry_budget * self.petrochem_fraction
+            if industry_budget is not None and self.petrochem_fraction is not None
+            else None
+        )
 
         return {
             'korea_total': korea_total,
@@ -339,8 +349,19 @@ class KoreaBudgetCalculator:
         )
 
         korea_budgets = global_budgets * weighted_factors
-        industry_budgets = korea_budgets * self.industry_fraction
-        petrochem_budgets = industry_budgets * self.petrochem_fraction
+
+        if self.industry_fraction is not None:
+            industry_budgets = korea_budgets * self.industry_fraction
+        else:
+            industry_budgets = np.full_like(korea_budgets, np.nan)
+
+        if (
+            self.industry_fraction is not None
+            and self.petrochem_fraction is not None
+        ):
+            petrochem_budgets = industry_budgets * self.petrochem_fraction
+        else:
+            petrochem_budgets = np.full_like(korea_budgets, np.nan)
 
         return korea_budgets, industry_budgets, petrochem_budgets
 
@@ -353,11 +374,13 @@ class KoreaBudgetCalculator:
     ) -> Dict[str, Any]:
         """Calculate summary statistics for budgets."""
 
-        stats = {
-            'korea_total': self._get_budget_stats(korea_budgets),
-            'industry': self._get_budget_stats(industry_budgets),
-            'petrochem': self._get_budget_stats(petrochem_budgets)
-        }
+        stats = {'korea_total': self._get_budget_stats(korea_budgets)}
+
+        industry_stats = self._maybe_get_stats(industry_budgets)
+        petrochem_stats = self._maybe_get_stats(petrochem_budgets)
+
+        stats['industry'] = industry_stats
+        stats['petrochem'] = petrochem_stats
 
         # Scenario-specific statistics
         scenario_stats = {}
@@ -369,8 +392,8 @@ class KoreaBudgetCalculator:
                     'count': int(count),
                     'proportion': float(count / len(scenarios)),
                     'korea_total': self._get_budget_stats(korea_budgets[mask]),
-                    'industry': self._get_budget_stats(industry_budgets[mask]),
-                    'petrochem': self._get_budget_stats(petrochem_budgets[mask])
+                    'industry': self._maybe_get_stats(industry_budgets[mask]),
+                    'petrochem': self._maybe_get_stats(petrochem_budgets[mask])
                 }
 
         stats['by_scenario'] = scenario_stats
@@ -392,6 +415,13 @@ class KoreaBudgetCalculator:
             'p95': float(np.percentile(budgets, 95)),
             'cv': float(np.std(budgets) / np.mean(budgets)) if np.mean(budgets) > 0 else 0
         }
+
+    def _maybe_get_stats(self, budgets: np.ndarray) -> Optional[Dict[str, float]]:
+        """Return stats only when budgets contain finite values."""
+        finite = np.isfinite(budgets)
+        if not finite.any():
+            return None
+        return self._get_budget_stats(budgets[finite])
 
     def export_results(
         self,
