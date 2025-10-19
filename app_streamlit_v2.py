@@ -391,10 +391,6 @@ if page == "⚙️ Configure Allocation Factors":
                 st.session_state.pop(key, None)
             st.rerun()
 
-    if st.button("Next: Calculate Budget", type="primary"):
-        st.session_state['_trigger_budget_run'] = True
-        st.session_state.nav_page = "📊 Calculate Budget"
-        st.rerun()
 
 # ==================== CALCULATE BUDGET ====================
 elif page == "📊 Calculate Budget":
@@ -590,10 +586,6 @@ elif page == "📊 Calculate Budget":
                     title="Industry Budget Distribution by Scenario")
         st.plotly_chart(fig, use_container_width=True)
 
-        if st.button("Next: Generate Pathways", type="primary"):
-            st.session_state['_trigger_pathway_run'] = True
-            st.session_state.nav_page = "📈 Generate Pathways"
-            st.rerun()
 
 # ==================== GENERATE PATHWAYS ====================
 elif page == "📈 Generate Pathways":
@@ -692,14 +684,26 @@ elif page == "📈 Generate Pathways":
     st.sidebar.subheader("🏭 Sector Allocation")
     st.sidebar.markdown("Set the fraction of emissions for each sector:")
 
-    # Industry fraction (as % of national)
-    industry_fraction_pct = st.sidebar.slider(
-        "Industry (% of National)",
-        min_value=10.0,
-        max_value=80.0,
-        value=st.session_state.get('industry_fraction_pct', 37.0),
+    # Transformation + Other sectors exclusion (as % of national)
+    transformation_other_pct = st.sidebar.slider(
+        "Transformation + Other (% of National to Exclude)",
+        min_value=0.0,
+        max_value=50.0,
+        value=st.session_state.get('transformation_other_pct', 20.0),
         step=1.0,
-        help="Industry sector's share of national emissions. Default: 37% based on Korea 2024 data",
+        help="Fraction of national budget to exclude for transformation and other sectors. Default: 20%",
+        key="transformation_other_pct"
+    )
+    transformation_other_fraction = transformation_other_pct / 100
+
+    # Industry fraction (as % of national AFTER exclusion)
+    industry_fraction_pct = st.sidebar.slider(
+        "Industry (% of Remaining National)",
+        min_value=10.0,
+        max_value=100.0,
+        value=st.session_state.get('industry_fraction_pct', 46.25),
+        step=0.25,
+        help="Industry sector's share of remaining national emissions after excluding transformation+other. Default: 46.25%",
         key="industry_fraction_pct"
     )
     industry_fraction = industry_fraction_pct / 100
@@ -719,9 +723,10 @@ elif page == "📈 Generate Pathways":
     # Show calculated percentages
     st.sidebar.info(
         f"**Sector Shares:**\n"
-        f"- Industry: {industry_fraction_pct:.0f}% of National\n"
-        f"- Petrochemical: {petrochem_fraction_pct:.0f}% of Industry\n"
-        f"- Petrochemical: {industry_fraction_pct * petrochem_fraction_pct / 100:.1f}% of National"
+        f"- Transformation + Other: {transformation_other_pct:.0f}% of National (Excluded)\n"
+        f"- Remaining Budget: {100 - transformation_other_pct:.0f}% of National\n"
+        f"- Industry: {industry_fraction_pct:.1f}% of Remaining ({industry_fraction_pct * (100 - transformation_other_pct) / 100:.1f}% of Total National)\n"
+        f"- Petrochemical: {petrochem_fraction_pct:.0f}% of Industry ({industry_fraction_pct * petrochem_fraction_pct * (100 - transformation_other_pct) / 10000:.1f}% of Total National)"
     )
 
     # Generate pathway
@@ -731,16 +736,20 @@ elif page == "📈 Generate Pathways":
         with st.spinner(spinner_msg):
             national_start_emission = 600e6  # tCO2/year baseline assumption
 
+            # Exclude transformation + other sectors from the budget
+            remaining_budget = budget * (1 - transformation_other_fraction)
+            remaining_start_emission = national_start_emission * (1 - transformation_other_fraction)
+
             allocator = PathwayAllocator(
                 start_year=start_year,
                 end_year=end_year,
-                start_emission=national_start_emission,
+                start_emission=remaining_start_emission,
                 config={'max_annual_reduction_rate': 0.20, 'end_epsilon': 1.0}
             )
 
             if compare_curves:
                 comparison = allocator.compare_curves(
-                    budget,
+                    remaining_budget,
                     tier='three_tier',
                     industry_fraction=industry_fraction,
                     petrochem_fraction=petrochem_fraction
@@ -748,11 +757,13 @@ elif page == "📈 Generate Pathways":
                 st.session_state.pathway_comparison = comparison
                 st.session_state.pathway_result = None
                 st.session_state.pathway_budget = budget
+                st.session_state.remaining_budget = remaining_budget
                 st.session_state.industry_fraction = industry_fraction
                 st.session_state.petrochem_fraction = petrochem_fraction
+                st.session_state.transformation_other_fraction = transformation_other_fraction
             else:
                 result = allocator.allocate_budget(
-                    budget,
+                    remaining_budget,
                     curve_type,
                     validate=True,
                     tier='three_tier',
@@ -762,8 +773,10 @@ elif page == "📈 Generate Pathways":
                 st.session_state.pathway_result = result
                 st.session_state.pathway_comparison = None
                 st.session_state.pathway_budget = budget
+                st.session_state.remaining_budget = remaining_budget
                 st.session_state.industry_fraction = industry_fraction
                 st.session_state.petrochem_fraction = petrochem_fraction
+                st.session_state.transformation_other_fraction = transformation_other_fraction
 
             st.session_state.allocator = allocator
             st.session_state.pathway_settings = {
@@ -772,6 +785,7 @@ elif page == "📈 Generate Pathways":
                 'end_year': end_year,
                 'curve_type': curve_type,
                 'compare_curves': compare_curves,
+                'transformation_other_pct': transformation_other_pct,
                 'industry_fraction_pct': industry_fraction_pct,
                 'petrochem_fraction_pct': petrochem_fraction_pct
             }
@@ -788,6 +802,15 @@ elif page == "📈 Generate Pathways":
 
     if st.session_state.get('_trigger_pathway_run'):
         run_pathway_generation(auto_trigger=True)
+
+    # Show budget allocation info
+    if 'remaining_budget' in st.session_state and 'transformation_other_fraction' in st.session_state:
+        st.info(
+            f"**Budget Allocation:**\n"
+            f"- Total National Budget: {budget/1e9:.2f} Gt CO₂\n"
+            f"- Transformation + Other (Excluded): {st.session_state.transformation_other_fraction * 100:.0f}% = {budget * st.session_state.transformation_other_fraction / 1e9:.2f} Gt CO₂\n"
+            f"- Remaining Budget for Pathways: {st.session_state.remaining_budget/1e9:.2f} Gt CO₂ ({(1 - st.session_state.transformation_other_fraction) * 100:.0f}% of Total)"
+        )
 
     # Display results
     if compare_curves and 'pathway_comparison' in st.session_state:
@@ -1599,10 +1622,6 @@ elif page == "📈 Generate Pathways":
                     "application/json"
                 )
 
-        if st.button("Next: Summary Report", type="primary"):
-            st.session_state.nav_page = "📋 Summary Report"
-            st.rerun()
-
 # ==================== SUMMARY REPORT ====================
 else:  # Summary Report
     st.title("📋 Summary Report")
@@ -1786,6 +1805,74 @@ else:  # Summary Report
                         use_container_width=True,
                         hide_index=True
                     )
+
+                # Calculate and display NDC target percentages
+                st.markdown("---")
+                st.markdown("**📊 NDC 2030 Target Achievement**")
+                st.info("Korea NDC 2030 Target: 40% reduction from 2018 baseline (436.6 Mt CO₂)")
+
+                ndc_2030_target = 436.6e6 * 0.6  # 40% reduction = 60% of 2018 baseline (in tCO2)
+
+                # Calculate 2030 emissions for each tier (if available)
+                year_2030_idx = 2030 - result['years'][0] if 2030 >= result['years'][0] and 2030 <= result['years'][-1] else None
+
+                if year_2030_idx is not None and year_2030_idx < len(result['years']):
+                    ndc_rows = []
+
+                    # National level
+                    nat_2030 = float(result['pathway_national'][year_2030_idx])
+                    nat_reduction_from_baseline = (1 - nat_2030 / (436.6e6)) * 100
+                    nat_achievement = (nat_reduction_from_baseline / 40.0) * 100
+                    ndc_rows.append({
+                        'Tier': '🌍 National (Remaining after exclusion)',
+                        '2030 Emission (Mt)': nat_2030 / 1e6,
+                        'Reduction from 2018 (%)': nat_reduction_from_baseline,
+                        'NDC Achievement (%)': nat_achievement
+                    })
+
+                    # Industry level
+                    if 'pathway_industry' in result:
+                        ind_2030 = float(result['pathway_industry'][year_2030_idx])
+                        ind_baseline = 436.6e6 * result.get('industry_fraction', 0.37) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        ind_reduction_from_baseline = (1 - ind_2030 / ind_baseline) * 100 if ind_baseline > 0 else 0
+                        ind_achievement = (ind_reduction_from_baseline / 40.0) * 100
+                        ndc_rows.append({
+                            'Tier': '🏭 Industry',
+                            '2030 Emission (Mt)': ind_2030 / 1e6,
+                            'Reduction from 2018 (%)': ind_reduction_from_baseline,
+                            'NDC Achievement (%)': ind_achievement
+                        })
+
+                    # Petrochemical level
+                    if 'pathway_petrochem' in result:
+                        pet_2030 = float(result['pathway_petrochem'][year_2030_idx])
+                        pet_baseline = 436.6e6 * result.get('industry_fraction', 0.37) * result.get('petrochem_fraction', 0.10) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        pet_reduction_from_baseline = (1 - pet_2030 / pet_baseline) * 100 if pet_baseline > 0 else 0
+                        pet_achievement = (pet_reduction_from_baseline / 40.0) * 100
+                        ndc_rows.append({
+                            'Tier': '⚗️ Petrochemical',
+                            '2030 Emission (Mt)': pet_2030 / 1e6,
+                            'Reduction from 2018 (%)': pet_reduction_from_baseline,
+                            'NDC Achievement (%)': pet_achievement
+                        })
+
+                    ndc_df = pd.DataFrame(ndc_rows)
+                    st.dataframe(
+                        ndc_df.style.format({
+                            '2030 Emission (Mt)': '{:.2f}',
+                            'Reduction from 2018 (%)': '{:.1f}',
+                            'NDC Achievement (%)': '{:.1f}'
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    # Calculate weighted average
+                    avg_achievement = sum(row['NDC Achievement (%)'] for row in ndc_rows) / len(ndc_rows)
+                    st.metric("📊 Average NDC Achievement Across All Tiers", f"{avg_achievement:.1f}%")
+                else:
+                    st.warning("⚠️ Year 2030 is outside the pathway range. Cannot calculate NDC achievement.")
+
         elif pathway_comparison is not None:
             st.subheader("3️⃣ Emission Pathway Comparison")
             st.dataframe(
@@ -1793,6 +1880,83 @@ else:  # Summary Report
                 use_container_width=True
             )
             st.info("ℹ️ Detailed sector pathways are available in the comparison view on the Generate Pathways tab.")
+
+            # Calculate NDC achievement for each curve in comparison
+            st.markdown("---")
+            st.markdown("**📊 NDC 2030 Target Achievement by Curve Type**")
+            st.info("Korea NDC 2030 Target: 40% reduction from 2018 baseline (436.6 Mt CO₂)")
+
+            allocator = st.session_state.get('allocator')
+            remaining_budget = st.session_state.get('remaining_budget')
+            industry_fraction = st.session_state.get('industry_fraction', 0.37)
+            petrochem_fraction = st.session_state.get('petrochem_fraction', 0.10)
+            transformation_other_fraction = st.session_state.get('transformation_other_fraction', 0.2)
+
+            if allocator and remaining_budget:
+                ndc_comparison_rows = []
+
+                for _, row in pathway_comparison.iterrows():
+                    curve_type = row['curve_type']
+                    try:
+                        result = allocator.allocate_budget(
+                            remaining_budget, curve_type, validate=False,
+                            tier='three_tier', industry_fraction=industry_fraction,
+                            petrochem_fraction=petrochem_fraction
+                        )
+
+                        year_2030_idx = 2030 - result['years'][0] if 2030 >= result['years'][0] and 2030 <= result['years'][-1] else None
+
+                        if year_2030_idx is not None and year_2030_idx < len(result['years']):
+                            # National level
+                            nat_2030 = float(result['pathway_national'][year_2030_idx])
+                            nat_reduction = (1 - nat_2030 / (436.6e6)) * 100
+                            nat_achievement = (nat_reduction / 40.0) * 100
+
+                            # Industry level
+                            ind_2030 = float(result['pathway_industry'][year_2030_idx])
+                            ind_baseline = 436.6e6 * industry_fraction * (1 - transformation_other_fraction)
+                            ind_reduction = (1 - ind_2030 / ind_baseline) * 100 if ind_baseline > 0 else 0
+                            ind_achievement = (ind_reduction / 40.0) * 100
+
+                            # Petrochemical level
+                            pet_2030 = float(result['pathway_petrochem'][year_2030_idx])
+                            pet_baseline = 436.6e6 * industry_fraction * petrochem_fraction * (1 - transformation_other_fraction)
+                            pet_reduction = (1 - pet_2030 / pet_baseline) * 100 if pet_baseline > 0 else 0
+                            pet_achievement = (pet_reduction / 40.0) * 100
+
+                            # Average achievement
+                            avg_achievement = (nat_achievement + ind_achievement + pet_achievement) / 3
+
+                            ndc_comparison_rows.append({
+                                'Curve Type': curve_type,
+                                'Nat. Reduction (%)': nat_reduction,
+                                'Nat. NDC (%)': nat_achievement,
+                                'Ind. Reduction (%)': ind_reduction,
+                                'Ind. NDC (%)': ind_achievement,
+                                'Pet. Reduction (%)': pet_reduction,
+                                'Pet. NDC (%)': pet_achievement,
+                                'Avg. NDC (%)': avg_achievement
+                            })
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate NDC for {curve_type}: {e}")
+
+                if ndc_comparison_rows:
+                    ndc_comparison_df = pd.DataFrame(ndc_comparison_rows)
+                    st.dataframe(
+                        ndc_comparison_df.style.format({
+                            'Nat. Reduction (%)': '{:.1f}',
+                            'Nat. NDC (%)': '{:.1f}',
+                            'Ind. Reduction (%)': '{:.1f}',
+                            'Ind. NDC (%)': '{:.1f}',
+                            'Pet. Reduction (%)': '{:.1f}',
+                            'Pet. NDC (%)': '{:.1f}',
+                            'Avg. NDC (%)': '{:.1f}'
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.warning("⚠️ Could not calculate NDC achievement for comparison curves.")
 
         # Generate full report
         if has_factors and has_budget and has_pathway:
