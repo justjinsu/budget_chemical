@@ -382,32 +382,39 @@ class PathwayAllocator:
                 pathway = curve_func(param, start_emission=start_emission, **kwargs)
                 cumulative = np.trapz(pathway, dx=1)
                 return cumulative - budget
-            except:
+            except Exception as e:
+                logger.debug(f"Budget error calculation failed for param={param}: {e}")
                 return 1e15  # Large error for invalid parameters
 
-        # Search for optimal parameter
-        try:
-            # Try Brentq method first (faster for single parameter)
-            param_opt = brentq(
-                budget_error,
-                1e-6,  # Lower bound
-                100.0,  # Upper bound
-                xtol=1e-8,
-                maxiter=self.max_iter
-            )
-            success = True
-        except (ValueError, RuntimeError) as e:
-            logger.warning(f"Brentq optimization failed: {e}, trying minimize_scalar")
+        # Determine parameter bounds based on curve function name
+        curve_name = curve_func.__name__
+        if 'linear' in curve_name:
+            param_min, param_max = 0.1, 2.0
+        elif 'plateau' in curve_name:
+            param_min, param_max = 0.1, 0.8
+        elif 'delayed' in curve_name:
+            param_min, param_max = 0.0, 0.7
+        elif 's_curve' in curve_name:
+            param_min, param_max = 0.2, 0.8
+        else:
+            param_min, param_max = 0.01, 50.0
 
-            # Fallback to minimize_scalar
+        # Search for optimal parameter using minimize_scalar (more robust than brentq)
+        try:
             result = minimize_scalar(
                 lambda p: abs(budget_error(p)),
-                bounds=(1e-6, 100.0),
+                bounds=(param_min, param_max),
                 method='bounded',
-                options={'maxiter': self.max_iter}
+                options={'maxiter': self.max_iter, 'xatol': 1e-8}
             )
             param_opt = result.x
             success = result.success
+
+            if not success:
+                logger.warning(f"Optimization did not converge for {curve_name}")
+        except Exception as e:
+            logger.error(f"Optimization failed for {curve_name}: {e}")
+            success = False
 
         if not success:
             logger.error("Optimization failed, using fallback linear pathway")
@@ -865,7 +872,8 @@ class PathwayAllocator:
                 result = self.allocate_budget(
                     budget, curve_type, validate=True,
                     tier=tier, industry_fraction=industry_fraction,
-                    petrochem_fraction=petrochem_fraction
+                    petrochem_fraction=petrochem_fraction,
+                    national_start_emission=self.start_emission
                 )
 
                 pathway = result['pathway']
