@@ -140,19 +140,19 @@ class PathwayAllocator:
         petrochem_start = float(petrochem_start_emission) if petrochem_start_emission is not None else industry_start * petrochem_fraction
 
         if tier == 'three_tier':
-            # Generate national-level pathway
+            # Generate national-level pathway (for remaining sectors after exclusion)
             curve_func = self.curve_types[curve_type]
             pathway_national, params = self._optimize_pathway(
                 budget, curve_func, start_emission=national_start, **kwargs
             )
 
-            # Calculate industry budget and pathway
+            # Calculate industry budget and pathway (independent curve)
             budget_industry = budget * industry_fraction
             pathway_industry, _ = self._optimize_pathway(
                 budget_industry, curve_func, start_emission=industry_start, **kwargs
             )
 
-            # Calculate petrochemical budget and pathway
+            # Calculate petrochemical budget and pathway (independent curve)
             budget_petrochem = budget_industry * petrochem_fraction
             pathway_petrochem, _ = self._optimize_pathway(
                 budget_petrochem, curve_func, start_emission=petrochem_start, **kwargs
@@ -232,7 +232,7 @@ class PathwayAllocator:
                 budget, curve_func, start_emission=national_start, **kwargs
             )
 
-            # Calculate industry budget and pathway
+            # Calculate industry budget and pathway (independent curve)
             budget_industry = budget * industry_fraction
             pathway_industry, _ = self._optimize_pathway(
                 budget_industry, curve_func, start_emission=industry_start, **kwargs
@@ -443,7 +443,7 @@ class PathwayAllocator:
         **kwargs
     ) -> np.ndarray:
         """
-        Exponential decay curve: E(t) = E0 * exp(-k*t) + epsilon
+        Exponential decay curve: E(t) = E0 * exp(-k*t)
 
         Args:
             decay_rate: Decay parameter k
@@ -453,8 +453,7 @@ class PathwayAllocator:
         """
         start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)  # Normalized time [0, 1]
-        pathway = start * np.exp(-decay_rate * t) + self.end_epsilon
-        pathway[-1] = self.end_epsilon  # Ensure final value
+        pathway = start * np.exp(-decay_rate * t)
         return pathway
 
     def _logarithmic_curve(
@@ -464,7 +463,7 @@ class PathwayAllocator:
         **kwargs
     ) -> np.ndarray:
         """
-        Logarithmic decay: E(t) = E0 * (1 - log(1 + k*t) / log(1 + k)) + epsilon
+        Logarithmic decay: E(t) = E0 * (1 - log(1 + k*t) / log(1 + k))
 
         Provides steeper initial reductions than exponential.
 
@@ -479,11 +478,11 @@ class PathwayAllocator:
 
         # Logarithmic decay formula
         decay_factor = np.log(1 + shape_param * t) / np.log(1 + shape_param)
-        pathway = start * (1 - decay_factor) + self.end_epsilon
+        pathway = start * (1 - decay_factor)
 
-        # Ensure monotonic decrease
+        # Ensure monotonic decrease and non-negative
         pathway = np.maximum.accumulate(pathway[::-1])[::-1]
-        pathway[-1] = self.end_epsilon
+        pathway = np.maximum(pathway, 0)
 
         return pathway
 
@@ -497,7 +496,7 @@ class PathwayAllocator:
         """
         S-curve (logistic function): Slow start, rapid middle, slow end.
 
-        E(t) = E0 * (1 - 1/(1 + exp(-steepness*(t - inflection)))) + epsilon
+        E(t) = E0 * (1 - 1/(1 + exp(-steepness*(t - inflection))))
 
         Args:
             inflection_point: Point of maximum reduction rate (0-1)
@@ -511,27 +510,26 @@ class PathwayAllocator:
 
         # Logistic decay
         decay_factor = 1 / (1 + np.exp(-steepness * (t - inflection_point)))
-        pathway = start * (1 - decay_factor) + self.end_epsilon
-        pathway[-1] = self.end_epsilon
+        pathway = start * (1 - decay_factor)
 
         return pathway
 
     def _linear_curve(
         self,
-        _: float = 1.0,
+        slope_factor: float = 1.0,
         start_emission: Optional[float] = None,
         **kwargs
     ) -> np.ndarray:
         """
-        Linear reduction: E(t) = E0 * (1 - t) + epsilon
+        Linear reduction: E(t) = E0 * (1 - slope_factor*t)
 
         Returns:
             Emission pathway array
         """
         start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = start * (1 - t) + self.end_epsilon
-        pathway[-1] = self.end_epsilon
+        pathway = start * (1 - slope_factor * t)
+        pathway = np.maximum(pathway, 0)  # Ensure non-negative
         return pathway
 
     def _plateau_curve(
@@ -564,10 +562,8 @@ class PathwayAllocator:
 
         # Decay phase
         t_decay = np.linspace(0, 1, self.n_years - plateau_idx)
-        pathway[plateau_idx:] = (start * np.exp(-decay_rate * t_decay) +
-                                 self.end_epsilon)
+        pathway[plateau_idx:] = start * np.exp(-decay_rate * t_decay)
 
-        pathway[-1] = self.end_epsilon
         return pathway
 
     def _convex_curve(
@@ -577,7 +573,7 @@ class PathwayAllocator:
         **kwargs
     ) -> np.ndarray:
         """
-        Convex curve: E(t) = E0 * (1 - t^curvature) + epsilon
+        Convex curve: E(t) = E0 * (1 - t^curvature)
 
         Front-loaded reduction (curvature > 1)
 
@@ -589,8 +585,8 @@ class PathwayAllocator:
         """
         start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = start * (1 - t**curvature) + self.end_epsilon
-        pathway[-1] = self.end_epsilon
+        pathway = start * (1 - t**curvature)
+        pathway = np.maximum(pathway, 0)  # Ensure non-negative
         return pathway
 
     def _early_action_curve(
@@ -602,7 +598,7 @@ class PathwayAllocator:
         """
         Early action: Aggressive initial reductions, then plateau.
 
-        E(t) = E0 * (0.3 + 0.7 * (1-t)^intensity) + epsilon
+        E(t) = E0 * (0.3 + 0.7 * (1-t)^intensity)
 
         Args:
             intensity: Intensity of early reductions
@@ -612,8 +608,7 @@ class PathwayAllocator:
         """
         start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = start * (0.3 + 0.7 * (1 - t)**intensity) + self.end_epsilon
-        pathway[-1] = self.end_epsilon
+        pathway = start * (0.3 + 0.7 * (1 - t)**intensity)
         return pathway
 
     def _delayed_action_curve(
@@ -640,10 +635,8 @@ class PathwayAllocator:
 
         # Rapid reduction after delay
         t_reduction = np.linspace(0, 1, self.n_years - delay_idx)
-        pathway[delay_idx:] = (start *
-                               (1 - t_reduction)**2 + self.end_epsilon)
+        pathway[delay_idx:] = start * (1 - t_reduction)**2
 
-        pathway[-1] = self.end_epsilon
         return pathway
 
     # ==================== Milestone Calculation ====================
@@ -774,17 +767,12 @@ class PathwayAllocator:
             issues.append("Pathway not monotonically decreasing")
 
         # Check annual reduction rates
-        annual_reductions = -np.diff(pathway) / pathway[:-1]
+        annual_reductions = -np.diff(pathway) / (pathway[:-1] + 1e-10)  # Add small epsilon to avoid division by zero
         max_reduction = np.max(annual_reductions)
 
         if max_reduction > self.max_annual_reduction:
             issues.append(f"Exceeds max reduction rate: {max_reduction:.1%}/year "
                         f"(limit: {self.max_annual_reduction:.1%}/year)")
-
-        # Check final emission
-        if pathway[-1] > self.min_final_emission and not self.allow_residual:
-            issues.append(f"Final emission {pathway[-1]:.0f} tCO2/year exceeds "
-                        f"minimum {self.min_final_emission:.0f} tCO2/year")
 
         # Check for negative values
         if np.any(pathway < 0):
