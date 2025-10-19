@@ -671,7 +671,7 @@ elif page == "📈 Generate Pathways":
     # Pathway settings
     st.sidebar.header("⚙️ Pathway Settings")
 
-    curve_options = ["exponential", "logarithmic", "s_curve", "linear", "plateau",
+    curve_options = ["exponential", "logarithmic", "s_curve", "linear",
                      "convex", "early_action", "delayed_action"]
     default_curve = st.session_state.get('pathway_curve_type', curve_options[0])
     curve_type = st.sidebar.selectbox(

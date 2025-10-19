@@ -80,7 +80,7 @@ def main():
     parser.add_argument('--budget', type=float, help='Carbon budget (tCO2)')
     parser.add_argument('--curve', type=str, default='exponential',
                        choices=['exponential', 'logarithmic', 's_curve', 'linear',
-                               'plateau', 'convex', 'early_action', 'delayed_action'],
+                               'convex', 'early_action', 'delayed_action'],
                        help='Curve type')
     parser.add_argument('--start-year', type=int, default=2024, help='Start year')
     parser.add_argument('--end-year', type=int, default=2050, help='End year')
