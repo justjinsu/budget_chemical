@@ -818,13 +818,25 @@ elif page == "📈 Generate Pathways":
 
         comparison = st.session_state.pathway_comparison
 
+        # Convert milestone values to Mt for display and add cumulative in Gt
+        comparison_display = comparison.copy()
+
+        # Add cumulative emissions in Gt
+        if 'cumulative_tco2' in comparison_display.columns:
+            comparison_display['Cumulative (Gt)'] = comparison_display['cumulative_tco2'] / 1e9
+
+        for col in comparison_display.columns:
+            if col.startswith('emission_') or col.startswith('industry_') or col.startswith('petrochem_'):
+                comparison_display[col] = comparison_display[col] / 1e6  # tCO2 -> Mt
+
         # Format columns dynamically
         format_dict = {
             'budget_error_pct': '{:.2f}%',
             'initial_reduction_pct': '{:.2f}%',
             'avg_annual_reduction_pct': '{:.2f}%',
             'final_emission_tco2': '{:.0f}',
-            'cumulative_tco2': '{:.2e}'
+            'cumulative_tco2': '{:.2e}',
+            'Cumulative (Gt)': '{:.3f}'
         }
 
         # Add formatting for milestone columns (in Mt CO2/year)
@@ -835,12 +847,6 @@ elif page == "📈 Generate Pathways":
                 format_dict[f'industry_{year}'] = '{:.1f}'  # Mt CO2/year
             if f'petrochem_{year}' in comparison.columns:
                 format_dict[f'petrochem_{year}'] = '{:.1f}'  # Mt CO2/year
-
-        # Convert milestone values to Mt for display
-        comparison_display = comparison.copy()
-        for col in comparison_display.columns:
-            if col.startswith('emission_') or col.startswith('industry_') or col.startswith('petrochem_'):
-                comparison_display[col] = comparison_display[col] / 1e6  # tCO2 -> Mt
 
         st.dataframe(comparison_display.style.format(format_dict), use_container_width=True)
 
@@ -1808,70 +1814,129 @@ else:  # Summary Report
 
                 # Calculate and display NDC target percentages
                 st.markdown("---")
-                st.markdown("**📊 NDC 2030 Target Achievement**")
-                st.info("Korea NDC 2030 Target: 40% reduction from 2018 baseline (436.6 Mt CO₂)")
+                st.markdown("**📊 Climate Target Achievement (2030 & 2035)**")
+                st.info(
+                    "**Korea Climate Targets:**\n"
+                    "- 2030 NDC: 40% reduction from 2018 baseline (436.6 Mt CO₂)\n"
+                    "- 2035 Target: TBD (User can define based on pathway)"
+                )
 
                 ndc_2030_target = 436.6e6 * 0.6  # 40% reduction = 60% of 2018 baseline (in tCO2)
+                baseline_2018 = 436.6e6  # tCO2
 
-                # Calculate 2030 emissions for each tier (if available)
+                # Calculate 2030 and 2035 emissions for each tier
                 year_2030_idx = 2030 - result['years'][0] if 2030 >= result['years'][0] and 2030 <= result['years'][-1] else None
+                year_2035_idx = 2035 - result['years'][0] if 2035 >= result['years'][0] and 2035 <= result['years'][-1] else None
 
                 if year_2030_idx is not None and year_2030_idx < len(result['years']):
-                    ndc_rows = []
+                    st.markdown("**2030 NDC Target Achievement**")
+                    ndc_2030_rows = []
 
                     # National level
                     nat_2030 = float(result['pathway_national'][year_2030_idx])
-                    nat_reduction_from_baseline = (1 - nat_2030 / (436.6e6)) * 100
+                    nat_reduction_from_baseline = (1 - nat_2030 / baseline_2018) * 100
                     nat_achievement = (nat_reduction_from_baseline / 40.0) * 100
-                    ndc_rows.append({
-                        'Tier': '🌍 National (Remaining after exclusion)',
+                    ndc_2030_rows.append({
+                        'Tier': '🌍 National (Remaining)',
                         '2030 Emission (Mt)': nat_2030 / 1e6,
-                        'Reduction from 2018 (%)': nat_reduction_from_baseline,
+                        'Reduction (%)': nat_reduction_from_baseline,
                         'NDC Achievement (%)': nat_achievement
                     })
 
                     # Industry level
                     if 'pathway_industry' in result:
                         ind_2030 = float(result['pathway_industry'][year_2030_idx])
-                        ind_baseline = 436.6e6 * result.get('industry_fraction', 0.37) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        ind_baseline = baseline_2018 * result.get('industry_fraction', 0.37) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
                         ind_reduction_from_baseline = (1 - ind_2030 / ind_baseline) * 100 if ind_baseline > 0 else 0
                         ind_achievement = (ind_reduction_from_baseline / 40.0) * 100
-                        ndc_rows.append({
+                        ndc_2030_rows.append({
                             'Tier': '🏭 Industry',
                             '2030 Emission (Mt)': ind_2030 / 1e6,
-                            'Reduction from 2018 (%)': ind_reduction_from_baseline,
+                            'Reduction (%)': ind_reduction_from_baseline,
                             'NDC Achievement (%)': ind_achievement
                         })
 
                     # Petrochemical level
                     if 'pathway_petrochem' in result:
                         pet_2030 = float(result['pathway_petrochem'][year_2030_idx])
-                        pet_baseline = 436.6e6 * result.get('industry_fraction', 0.37) * result.get('petrochem_fraction', 0.10) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        pet_baseline = baseline_2018 * result.get('industry_fraction', 0.37) * result.get('petrochem_fraction', 0.10) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
                         pet_reduction_from_baseline = (1 - pet_2030 / pet_baseline) * 100 if pet_baseline > 0 else 0
                         pet_achievement = (pet_reduction_from_baseline / 40.0) * 100
-                        ndc_rows.append({
+                        ndc_2030_rows.append({
                             'Tier': '⚗️ Petrochemical',
                             '2030 Emission (Mt)': pet_2030 / 1e6,
-                            'Reduction from 2018 (%)': pet_reduction_from_baseline,
+                            'Reduction (%)': pet_reduction_from_baseline,
                             'NDC Achievement (%)': pet_achievement
                         })
 
-                    ndc_df = pd.DataFrame(ndc_rows)
+                    ndc_2030_df = pd.DataFrame(ndc_2030_rows)
                     st.dataframe(
-                        ndc_df.style.format({
+                        ndc_2030_df.style.format({
                             '2030 Emission (Mt)': '{:.2f}',
-                            'Reduction from 2018 (%)': '{:.1f}',
+                            'Reduction (%)': '{:.1f}',
                             'NDC Achievement (%)': '{:.1f}'
                         }),
                         use_container_width=True,
                         hide_index=True
                     )
 
-                    # Calculate weighted average
-                    avg_achievement = sum(row['NDC Achievement (%)'] for row in ndc_rows) / len(ndc_rows)
-                    st.metric("📊 Average NDC Achievement Across All Tiers", f"{avg_achievement:.1f}%")
+                    avg_2030_achievement = sum(row['NDC Achievement (%)'] for row in ndc_2030_rows) / len(ndc_2030_rows)
+                    st.metric("📊 2030 Average NDC Achievement", f"{avg_2030_achievement:.1f}%")
                 else:
-                    st.warning("⚠️ Year 2030 is outside the pathway range. Cannot calculate NDC achievement.")
+                    st.warning("⚠️ Year 2030 is outside the pathway range.")
+
+                # 2035 Target
+                if year_2035_idx is not None and year_2035_idx < len(result['years']):
+                    st.markdown("---")
+                    st.markdown("**2035 Emissions**")
+
+                    target_2035_rows = []
+
+                    # National level
+                    nat_2035 = float(result['pathway_national'][year_2035_idx])
+                    nat_reduction_2035 = (1 - nat_2035 / baseline_2018) * 100
+                    target_2035_rows.append({
+                        'Tier': '🌍 National (Remaining)',
+                        '2035 Emission (Mt)': nat_2035 / 1e6,
+                        'Reduction from 2018 (%)': nat_reduction_2035
+                    })
+
+                    # Industry level
+                    if 'pathway_industry' in result:
+                        ind_2035 = float(result['pathway_industry'][year_2035_idx])
+                        ind_baseline = baseline_2018 * result.get('industry_fraction', 0.37) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        ind_reduction_2035 = (1 - ind_2035 / ind_baseline) * 100 if ind_baseline > 0 else 0
+                        target_2035_rows.append({
+                            'Tier': '🏭 Industry',
+                            '2035 Emission (Mt)': ind_2035 / 1e6,
+                            'Reduction from 2018 (%)': ind_reduction_2035
+                        })
+
+                    # Petrochemical level
+                    if 'pathway_petrochem' in result:
+                        pet_2035 = float(result['pathway_petrochem'][year_2035_idx])
+                        pet_baseline = baseline_2018 * result.get('industry_fraction', 0.37) * result.get('petrochem_fraction', 0.10) * (1 - st.session_state.get('transformation_other_fraction', 0.2))
+                        pet_reduction_2035 = (1 - pet_2035 / pet_baseline) * 100 if pet_baseline > 0 else 0
+                        target_2035_rows.append({
+                            'Tier': '⚗️ Petrochemical',
+                            '2035 Emission (Mt)': pet_2035 / 1e6,
+                            'Reduction from 2018 (%)': pet_reduction_2035
+                        })
+
+                    target_2035_df = pd.DataFrame(target_2035_rows)
+                    st.dataframe(
+                        target_2035_df.style.format({
+                            '2035 Emission (Mt)': '{:.2f}',
+                            'Reduction from 2018 (%)': '{:.1f}'
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    avg_2035_reduction = sum(row['Reduction from 2018 (%)'] for row in target_2035_rows) / len(target_2035_rows)
+                    st.metric("📊 2035 Average Reduction from 2018 Baseline", f"{avg_2035_reduction:.1f}%")
+                else:
+                    st.warning("⚠️ Year 2035 is outside the pathway range.")
 
         elif pathway_comparison is not None:
             st.subheader("3️⃣ Emission Pathway Comparison")
