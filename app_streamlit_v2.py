@@ -718,14 +718,14 @@ elif page == "📈 Generate Pathways":
         key="national_start_mt"
     )
 
-    transformation_start_mt = st.sidebar.number_input(
-        "Transformation Sector (Mt CO₂/year)",
+    power_start_mt = st.sidebar.number_input(
+        "Power Sector (Mt CO₂/year)",
         min_value=0.0,
         max_value=national_start_mt,
-        value=st.session_state.get('transformation_start_mt', 90.0),
+        value=st.session_state.get('power_start_mt', 90.0),
         step=5.0,
-        help="Starting emissions for the transformation sector",
-        key="transformation_start_mt"
+        help="Starting emissions for the power sector",
+        key="power_start_mt"
     )
 
     other_start_mt = st.sidebar.number_input(
@@ -738,12 +738,12 @@ elif page == "📈 Generate Pathways":
         key="other_start_mt"
     )
 
-    transformation_other_start_mt = transformation_start_mt + other_start_mt
-    if transformation_other_start_mt > national_start_mt:
-        st.sidebar.error("⚠️ Transformation + Other exceeds national total. Adjust values.")
+    power_other_start_mt = power_start_mt + other_start_mt
+    if power_other_start_mt > national_start_mt:
+        st.sidebar.error("⚠️ Power + Other exceeds national total. Adjust values.")
         industry_start_mt = 0.0
     else:
-        industry_start_mt = national_start_mt - transformation_other_start_mt
+        industry_start_mt = national_start_mt - power_other_start_mt
 
     st.session_state['industry_start_mt'] = industry_start_mt
     st.sidebar.write(f"🏭 Computed Industry Start: **{industry_start_mt:.1f} Mt CO₂/year**")
@@ -785,21 +785,21 @@ elif page == "📈 Generate Pathways":
     st.sidebar.markdown("**Step 2: Set Budgets**")
 
     # Sector budgets
-    transformation_budget_gt = st.sidebar.number_input(
-        "Transformation Budget (Gt CO₂)",
+    power_budget_gt = st.sidebar.number_input(
+        "Power Sector Budget (Gt CO₂)",
         min_value=0.0,
         max_value=budget/1e9,
-        value=st.session_state.get('transformation_budget_gt', max(budget/1e9 * 0.12, 0.0)),
+        value=st.session_state.get('power_budget_gt', max(budget/1e9 * 0.12, 0.0)),
         step=0.05,
-        help="Total carbon budget allocated to the transformation sector",
-        key="transformation_budget_gt"
+        help="Total carbon budget allocated to the power sector",
+        key="power_budget_gt"
     )
-    transformation_budget = transformation_budget_gt * 1e9
+    power_budget = power_budget_gt * 1e9
 
     other_budget_gt = st.sidebar.number_input(
         "Other Sectors Budget (Gt CO₂)",
         min_value=0.0,
-        max_value=max(budget/1e9 - transformation_budget_gt, 0.0),
+        max_value=max(budget/1e9 - power_budget_gt, 0.0),
         value=st.session_state.get('other_budget_gt', max(budget/1e9 * 0.08, 0.0)),
         step=0.05,
         help="Total carbon budget allocated to other non-industry sectors",
@@ -807,10 +807,10 @@ elif page == "📈 Generate Pathways":
     )
     other_budget = other_budget_gt * 1e9
 
-    # Industry budget = Total - Transformation - Other
-    industry_budget = budget - transformation_budget - other_budget
+    # Industry budget = Total - Power - Other
+    industry_budget = budget - power_budget - other_budget
     if industry_budget < 0:
-        st.sidebar.error("⚠️ Transformation + Other budgets exceed national total. Adjust values.")
+        st.sidebar.error("⚠️ Power + Other budgets exceed national total. Adjust values.")
         industry_budget = 0.0
 
     industry_budget_gt = industry_budget / 1e9
@@ -831,7 +831,7 @@ elif page == "📈 Generate Pathways":
 
     # Convert to tCO2 for calculations
     national_start_emission = national_start_mt * 1e6
-    transformation_start_emission = transformation_start_mt * 1e6
+    power_start_emission = power_start_mt * 1e6
     other_start_emission = other_start_mt * 1e6
     industry_start_emission = industry_start_mt * 1e6
     petrochem_start_emission = petrochem_start_mt * 1e6
@@ -841,13 +841,13 @@ elif page == "📈 Generate Pathways":
         f"**Summary:**\n"
         f"**Starting Emissions (2024):**\n"
         f"- National: {national_start_mt:.0f} Mt/yr\n"
-        f"- Transformation: {transformation_start_mt:.0f} Mt/yr\n"
+        f"- Power: {power_start_mt:.0f} Mt/yr\n"
         f"- Other: {other_start_mt:.0f} Mt/yr\n"
         f"- Industry: {industry_start_mt:.0f} Mt/yr\n"
         f"- Petrochemical: {petrochem_start_mt:.0f} Mt/yr\n\n"
         f"**Budgets (2024-2050):**\n"
         f"- National: {budget/1e9:.2f} Gt\n"
-        f"- Transformation: {transformation_budget_gt:.2f} Gt\n"
+        f"- Power: {power_budget_gt:.2f} Gt\n"
         f"- Other: {other_budget_gt:.2f} Gt\n"
         f"- Industry: {industry_budget/1e9:.2f} Gt\n"
         f"- Petrochemical: {petrochem_budget/1e9:.2f} Gt"
@@ -860,13 +860,13 @@ elif page == "📈 Generate Pathways":
     def _compute_baseline_values():
         if national_start_mt > 0:
             industry_share = industry_start_mt / national_start_mt
-            transformation_share = transformation_start_mt / national_start_mt
+            power_share = power_start_mt / national_start_mt
             other_share = other_start_mt / national_start_mt
         else:
-            industry_share = transformation_share = other_share = 0.0
+            industry_share = power_share = other_share = 0.0
 
         baseline_industry_mt = baseline_national_mt * industry_share
-        baseline_transformation_mt = baseline_national_mt * transformation_share
+        baseline_power_mt = baseline_national_mt * power_share
         baseline_other_mt = baseline_national_mt * other_share
 
         if industry_start_mt > 0:
@@ -880,14 +880,14 @@ elif page == "📈 Generate Pathways":
             'mt': {
                 'national': baseline_national_mt,
                 'industry': baseline_industry_mt,
-                'transformation': baseline_transformation_mt,
+                'power': baseline_power_mt,
                 'other': baseline_other_mt,
                 'petrochem': baseline_petrochem_mt
             },
             't': {
                 'national': baseline_national_mt * 1e6,
                 'industry': baseline_industry_mt * 1e6,
-                'transformation': baseline_transformation_mt * 1e6,
+                'power': baseline_power_mt * 1e6,
                 'other': baseline_other_mt * 1e6,
                 'petrochem': baseline_petrochem_mt * 1e6
             }
@@ -898,26 +898,26 @@ elif page == "📈 Generate Pathways":
     st.session_state['reduction_target_years'] = target_years
 
     industry_fraction_value = industry_budget / budget if budget > 0 else 0.0
-    transformation_fraction_value = transformation_budget / budget if budget > 0 else 0.0
+    power_fraction_value = power_budget / budget if budget > 0 else 0.0
     other_fraction_value = other_budget / budget if budget > 0 else 0.0
     petrochem_fraction_value = petrochem_budget / industry_budget if industry_budget > 0 else 0.0
 
     st.session_state.industry_fraction = industry_fraction_value
-    st.session_state.transformation_fraction = transformation_fraction_value
+    st.session_state.power_fraction = power_fraction_value
     st.session_state.other_fraction = other_fraction_value
     st.session_state.petrochem_fraction = petrochem_fraction_value
 
     st.session_state.pathway_budget = budget
-    st.session_state.transformation_budget = transformation_budget
+    st.session_state.power_budget = power_budget
     st.session_state.other_budget = other_budget
     st.session_state.industry_budget = industry_budget
     st.session_state.petrochem_budget = petrochem_budget
-    st.session_state.transformation_other_budget = transformation_budget + other_budget
+    st.session_state.power_other_budget = power_budget + other_budget
 
     def generate_pathway_for_curve(curve_name: str) -> dict:
         sector_inputs = {
             'industry': {'start': industry_start_emission, 'budget': industry_budget},
-            'transformation': {'start': transformation_start_emission, 'budget': transformation_budget},
+            'power': {'start': power_start_emission, 'budget': power_budget},
             'other': {'start': other_start_emission, 'budget': other_budget}
         }
 
@@ -955,14 +955,14 @@ elif page == "📈 Generate Pathways":
 
         years = sector_results['industry']['years']
         pathway_industry = np.array(sector_results['industry']['pathway'])
-        pathway_transformation = np.array(sector_results['transformation']['pathway'])
+        pathway_power = np.array(sector_results['power']['pathway'])
         pathway_other = np.array(sector_results['other']['pathway'])
-        pathway_national = pathway_industry + pathway_transformation + pathway_other
+        pathway_national = pathway_industry + pathway_power + pathway_other
 
         calc_industry = float(sector_results['industry']['cumulative_emissions'])
-        calc_transformation = float(sector_results['transformation']['cumulative_emissions'])
+        calc_power = float(sector_results['power']['cumulative_emissions'])
         calc_other = float(sector_results['other']['cumulative_emissions'])
-        calc_national = calc_industry + calc_transformation + calc_other
+        calc_national = calc_industry + calc_power + calc_other
 
         budget_checks = {
             'national': {
@@ -975,10 +975,10 @@ elif page == "📈 Generate Pathways":
                 'calculated': calc_industry,
                 'error_pct': float(((calc_industry - industry_budget) / industry_budget * 100) if industry_budget > 0 else 0.0)
             },
-            'transformation': {
-                'expected': float(transformation_budget),
-                'calculated': calc_transformation,
-                'error_pct': float(((calc_transformation - transformation_budget) / transformation_budget * 100) if transformation_budget > 0 else 0.0)
+            'power': {
+                'expected': float(power_budget),
+                'calculated': calc_power,
+                'error_pct': float(((calc_power - power_budget) / power_budget * 100) if power_budget > 0 else 0.0)
             },
             'other': {
                 'expected': float(other_budget),
@@ -1008,7 +1008,7 @@ elif page == "📈 Generate Pathways":
                 f"Budget mismatch: {national_validation['budget_error_pct']:+.2f}%"
             )
 
-        for key in ['industry', 'transformation', 'other']:
+        for key in ['industry', 'power', 'other']:
             validation = sector_results[key]['validation']
             validation.setdefault('issues', [])
             validation['budget_error_pct'] = budget_checks[key]['error_pct']
@@ -1034,11 +1034,11 @@ elif page == "📈 Generate Pathways":
 
         milestone_years = sector_results['industry']['milestones']['years']
         industry_milestones = [float(x) if x is not None else None for x in sector_results['industry']['milestones']['national']]
-        transformation_milestones = [float(x) if x is not None else None for x in sector_results['transformation']['milestones']['national']]
+        power_milestones = [float(x) if x is not None else None for x in sector_results['power']['milestones']['national']]
         other_milestones = [float(x) if x is not None else None for x in sector_results['other']['milestones']['national']]
         national_milestones = []
         for idx in range(len(milestone_years)):
-            components = [industry_milestones[idx], transformation_milestones[idx], other_milestones[idx]]
+            components = [industry_milestones[idx], power_milestones[idx], other_milestones[idx]]
             if all(value is None for value in components):
                 national_milestones.append(None)
             else:
@@ -1053,7 +1053,7 @@ elif page == "📈 Generate Pathways":
             'years': milestone_years,
             'national': national_milestones,
             'industry': industry_milestones,
-            'transformation': transformation_milestones,
+            'power': power_milestones,
             'other': other_milestones
         }
         if petrochem_milestones is not None:
@@ -1064,7 +1064,7 @@ elif page == "📈 Generate Pathways":
         for sector_key, pathway in [
             ('national', pathway_national),
             ('industry', pathway_industry),
-            ('transformation', pathway_transformation),
+            ('power', pathway_power),
             ('other', pathway_other)
         ]:
             baseline_value = baseline_info['t'][sector_key]
@@ -1108,7 +1108,7 @@ elif page == "📈 Generate Pathways":
         validation = {
             'national': national_validation,
             'industry': sector_results['industry']['validation'],
-            'transformation': sector_results['transformation']['validation'],
+            'power': sector_results['power']['validation'],
             'other': sector_results['other']['validation']
         }
         if result_petrochem is not None:
@@ -1125,13 +1125,13 @@ elif page == "📈 Generate Pathways":
             'pathway': pathway_national,
             'pathway_national': pathway_national,
             'pathway_industry': pathway_industry,
-            'pathway_transformation': pathway_transformation,
+            'pathway_power': pathway_power,
             'pathway_other': pathway_other,
             'pathway_petrochem': result_petrochem['pathway'] if result_petrochem is not None else None,
             'budget_allocated': budget,
             'budget_national': budget,
             'budget_industry': industry_budget,
-            'budget_transformation': transformation_budget,
+            'budget_power': power_budget,
             'budget_other': other_budget,
             'budget_petrochem': petrochem_budget,
             'cumulative_national': np.cumsum(pathway_national),
@@ -1144,7 +1144,7 @@ elif page == "📈 Generate Pathways":
             'sector_results': sector_results_copy,
             'tier': 'multi_sector',
             'industry_fraction': industry_fraction_value,
-            'transformation_fraction': transformation_fraction_value,
+            'power_fraction': power_fraction_value,
             'other_fraction': other_fraction_value,
             'petrochem_fraction': petrochem_fraction_value
         }
@@ -1216,7 +1216,7 @@ elif page == "📈 Generate Pathways":
         for label, key in [
             ('National', 'national'),
             ('Industry', 'industry'),
-            ('Transformation', 'transformation'),
+            ('Power', 'power'),
             ('Other', 'other')
         ]:
             check = budget_checks.get(key)
@@ -1276,7 +1276,7 @@ elif page == "📈 Generate Pathways":
         sector_labels = [
             ('National', 'national'),
             ('Industry', 'industry'),
-            ('Transformation', 'transformation'),
+            ('Power', 'power'),
             ('Other', 'other')
         ]
         if result.get('pathway_petrochem') is not None:
@@ -1305,11 +1305,11 @@ elif page == "📈 Generate Pathways":
             )
 
         if show_charts:
-            tabs = ["🌍 National", "🏭 Industry", "🔄 Transformation", "📦 Other"]
+            tabs = ["🌍 National", "🏭 Industry", "⚡ Power", "📦 Other"]
             sector_series = [
                 ('pathway_national', 'National Emissions'),
                 ('pathway_industry', 'Industry Emissions'),
-                ('pathway_transformation', 'Transformation Emissions'),
+                ('pathway_power', 'Power Emissions'),
                 ('pathway_other', 'Other Emissions')
             ]
             if result.get('pathway_petrochem') is not None:
@@ -1374,8 +1374,8 @@ elif page == "📈 Generate Pathways":
                 'national_emissions_mtco2': np.array(result['pathway_national']) / 1e6,
                 'industry_emissions_tco2': result['pathway_industry'],
                 'industry_emissions_mtco2': np.array(result['pathway_industry']) / 1e6,
-                'transformation_emissions_tco2': result['pathway_transformation'],
-                'transformation_emissions_mtco2': np.array(result['pathway_transformation']) / 1e6,
+                'power_emissions_tco2': result['pathway_power'],
+                'power_emissions_mtco2': np.array(result['pathway_power']) / 1e6,
                 'other_emissions_tco2': result['pathway_other'],
                 'other_emissions_mtco2': np.array(result['pathway_other']) / 1e6
             })
@@ -1399,11 +1399,11 @@ elif page == "📈 Generate Pathways":
                     'years': [int(year) for year in result['years']],
                     'pathway_national': [float(x) for x in result['pathway_national']],
                     'pathway_industry': [float(x) for x in result['pathway_industry']],
-                    'pathway_transformation': [float(x) for x in result['pathway_transformation']],
+                    'pathway_power': [float(x) for x in result['pathway_power']],
                     'pathway_other': [float(x) for x in result['pathway_other']],
                     'budget_national': float(result['budget_national']),
                     'budget_industry': float(result['budget_industry']),
-                    'budget_transformation': float(result['budget_transformation']),
+                    'budget_power': float(result['budget_power']),
                     'budget_other': float(result['budget_other']),
                     'budget_petrochem': float(result['budget_petrochem']),
                     'validation': result['validation'],
@@ -1435,7 +1435,7 @@ elif page == "📈 Generate Pathways":
                 'Curve Type': res.get('curve_label', res['curve_type'].title()),
                 'National Budget Error (%)': res['budget_checks']['national']['error_pct'],
                 'Industry Budget Error (%)': res['budget_checks']['industry']['error_pct'],
-                'Transformation Budget Error (%)': res['budget_checks']['transformation']['error_pct'],
+                'Power Budget Error (%)': res['budget_checks']['power']['error_pct'],
                 'Other Budget Error (%)': res['budget_checks']['other']['error_pct']
             }
             if 'petrochem' in res['budget_checks']:
@@ -1476,8 +1476,8 @@ elif page == "📈 Generate Pathways":
             )
 
         show_petrochem = any(res.get('pathway_petrochem') is not None for res in results)
-        tab_labels = ["🌍 National", "🏭 Industry", "🔄 Transformation", "📦 Other"]
-        sector_keys = ['pathway_national', 'pathway_industry', 'pathway_transformation', 'pathway_other']
+        tab_labels = ["🌍 National", "🏭 Industry", "⚡ Power", "📦 Other"]
+        sector_keys = ['pathway_national', 'pathway_industry', 'pathway_power', 'pathway_other']
         if show_petrochem:
             tab_labels.append("⚗️ Petrochemical")
             sector_keys.append('pathway_petrochem')
@@ -1607,21 +1607,21 @@ else:  # Summary Report
             result = pathway_result
             national_budget = result['budget_national'] / 1e9
             industry_budget = result['budget_industry'] / 1e9
-            transformation_budget = result['budget_transformation'] / 1e9
+            power_budget = result['budget_power'] / 1e9
             other_budget = result['budget_other'] / 1e9
             petrochem_budget = result.get('budget_petrochem', 0.0) / 1e9
 
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("National Budget", f"{national_budget:.2f} Gt")
             col2.metric("Industry", f"{industry_budget:.2f} Gt")
-            col3.metric("Transformation", f"{transformation_budget:.2f} Gt")
+            col3.metric("Power", f"{power_budget:.2f} Gt")
             col4.metric("Other", f"{other_budget:.2f} Gt")
             col5.metric("Petrochemical", f"{petrochem_budget:.2f} Gt")
 
             start_cols = st.columns(4)
             start_cols[0].metric("National Start", f"{result['pathway_national'][0]/1e6:.0f} Mt/yr")
             start_cols[1].metric("Industry Start", f"{result['pathway_industry'][0]/1e6:.0f} Mt/yr")
-            start_cols[2].metric("Transformation Start", f"{result['pathway_transformation'][0]/1e6:.0f} Mt/yr")
+            start_cols[2].metric("Power Start", f"{result['pathway_power'][0]/1e6:.0f} Mt/yr")
             start_cols[3].metric("Other Start", f"{result['pathway_other'][0]/1e6:.0f} Mt/yr")
 
             budget_checks = result.get('budget_checks', {})
@@ -1631,7 +1631,7 @@ else:  # Summary Report
                 for label, key in [
                     ('National', 'national'),
                     ('Industry', 'industry'),
-                    ('Transformation', 'transformation'),
+                    ('Power', 'power'),
                     ('Other', 'other')
                 ]:
                     check = budget_checks.get(key)
@@ -1693,7 +1693,7 @@ else:  # Summary Report
             for label, key in [
                 ('National', 'national'),
                 ('Industry', 'industry'),
-                ('Transformation', 'transformation'),
+                ('Power', 'power'),
                 ('Other', 'other')
             ]:
                 sector_reductions = reductions.get(key, {})
@@ -1728,7 +1728,7 @@ else:  # Summary Report
             for key, label in [
                 ('national', 'National'),
                 ('industry', 'Industry'),
-                ('transformation', 'Transformation'),
+                ('power', 'Power'),
                 ('other', 'Other')
             ]:
                 val = validation.get(key)
@@ -1756,7 +1756,7 @@ else:  # Summary Report
             for label, key in [
                 ('National', 'national'),
                 ('Industry', 'industry'),
-                ('Transformation', 'transformation'),
+                ('Power', 'power'),
                 ('Other', 'other')
             ]:
                 values = milestones.get(key)
