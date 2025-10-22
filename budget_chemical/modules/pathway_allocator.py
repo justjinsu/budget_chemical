@@ -74,9 +74,7 @@ class PathwayAllocator:
             's_curve': self._s_curve,
             'linear': self._linear_curve,
             'plateau': self._plateau_curve,
-            'convex': self._convex_curve,
-            'early_action': self._early_action_curve,
-            'delayed_action': self._delayed_action_curve
+            'convex': self._convex_curve
         }
 
         logger.info(f"PathwayAllocator initialized: {start_year}-{end_year}, "
