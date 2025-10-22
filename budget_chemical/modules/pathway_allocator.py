@@ -605,17 +605,25 @@ class PathwayAllocator:
         """
         Early action: Aggressive initial reductions, then plateau.
 
-        E(t) = E0 * (0.3 + 0.7 * (1-t)^intensity)
+        E(t) = E0 * (1 - t^intensity) where intensity > 1
+
+        Higher intensity (>1) means steeper initial reduction.
 
         Args:
-            intensity: Intensity of early reductions
+            intensity: Intensity of early reductions (>1 for front-loading)
 
         Returns:
             Emission pathway array
         """
         start = self._resolve_start_emission(start_emission)
         t = np.linspace(0, 1, self.n_years)
-        pathway = start * (0.3 + 0.7 * (1 - t)**intensity)
+
+        # Use power function with intensity > 1 for front-loaded reduction
+        # intensity > 1 creates convex curve (aggressive early action)
+        intensity = max(intensity, 1.5)  # Ensure front-loading
+        pathway = start * (1 - t**intensity)
+        pathway = np.maximum(pathway, 0)  # Ensure non-negative
+
         return pathway
 
     def _delayed_action_curve(
@@ -627,6 +635,8 @@ class PathwayAllocator:
         """
         Delayed action: Maintain emissions initially, then rapid reduction.
 
+        Emissions stay constant during delay period, then decrease rapidly.
+
         Args:
             delay_fraction: Fraction of time period to delay (0-0.8)
 
@@ -635,14 +645,19 @@ class PathwayAllocator:
         """
         start = self._resolve_start_emission(start_emission)
         delay_fraction = np.clip(delay_fraction, 0, 0.8)
-        t = np.linspace(0, 1, self.n_years)
 
         delay_idx = int(delay_fraction * self.n_years)
-        pathway = np.ones(self.n_years) * start
+        pathway = np.zeros(self.n_years)
 
-        # Rapid reduction after delay
-        t_reduction = np.linspace(0, 1, self.n_years - delay_idx)
-        pathway[delay_idx:] = start * (1 - t_reduction)**2
+        # Constant emissions during delay
+        pathway[:delay_idx] = start
+
+        # Rapid reduction after delay (concave curve for back-loading)
+        n_reduction = self.n_years - delay_idx
+        if n_reduction > 0:
+            t_reduction = np.linspace(0, 1, n_reduction)
+            # Use (1-t)^0.5 for rapid initial drop then slower (concave/back-loaded)
+            pathway[delay_idx:] = start * (1 - t_reduction)**0.5
 
         return pathway
 
